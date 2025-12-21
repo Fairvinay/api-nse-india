@@ -108,3 +108,7 @@ build/
 
 # MacOS store file
 .DS_Store
+
+screens
+examples
+docs
