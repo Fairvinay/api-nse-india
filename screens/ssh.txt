@@ -1,0 +1,70 @@
+ssh-keygen -t rsa -b 4096 -C  "fairvinay@gmail.com"
+eval "$(ssh-agent -s)"
+ssh-add C:/utils/GlaubhantaSetup/budget-node-git/ifsatnet/budget-node-netlify/id_rsaOct27
+ssh-add  C:/icici/api-nse/screens/id_rsaOct27
+ssh-add E:/icici/api-nse/screens/id_rsaOct27
+ssh-add D:/icici/api-nse/screens/id_rsaOct27
+ssh -T git@github.com
+$ ssh -T git@github.com
+Hi Fairvinay! You've successfully authenticated, but GitHub does not provide shell access.
+
+
+git remote set-url origin git@github.com:Fairvinay/api-nse-india.git
+
+git remote add "origin" git@github.com:Fairvinay/api-nse-india.git
+git remote set-url origin git@github.com:Fairvinay/flaskreader.git
+
+this works
+git push --set-upstream git@github.com:Fairvinay/flaskreader.git master
+
+
+fatal: detected dubious ownership in repository at 'D:/n/farvinayAtmFrontend'
+'D:/n/farvinayAtmFrontend' is owned by:
+        (inconvertible) (S-1-5-21-884590258-1650515685-3329397948-1001)
+To add an exception for this directory, call:
+ git config --global --add safe.directory D:/n/farvinayAtmFrontend
+
+$ git commit -m " added the custom onboard , razor tip button "
+Author identity unknown
+
+ 
+ 
+
+*** Please tell me who you are.
+Run
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+ git config --global user.email "fairvinay@gmail.com"
+
+git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+ssh-add D:/n/farvinayAtmFrontend/screens/id_rsaOct27
+
+ssh-keygen -t rsa -b 4096 -C  "fairvinay@gmail.com"
+
+Jo Kuch bhi Ho Raha hain ,,, 
+
+Par Akbar ke liye ho raha hain 
+Allah hu aakhbar 
+
+Pinjaara maadhe ... Hijhaara raahtoh 
+Focus looses on swinging Chakli , 
+-- Say we not eat octopus daily. 
+you eat alwaays POHA , and so you can break LOHA .
+
+Violet Chakri flower , Unsold . Unstold items 
+
+parijano ko aap aapna paarichay deejjiye ... 
+
+samay ka aakhalan ... 
+vinamra aur vimal bhau se ka     x-test-header
+
+tat paashchyat iska aapko ... uttirna aanand ka ki anubhuti hogi
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.10/lodash.js"></script>
+
+job
+fullName
+twitter
+facebook
+instagram 
+linkedin
