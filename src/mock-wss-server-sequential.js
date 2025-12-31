@@ -22,7 +22,7 @@ import  path from 'path' ;
  // Define paths to your certificate files
     const privateKeyPath = path.join(__dirname, '../ssl-key', 'server.key');
     const certificatePath = path.join(__dirname, '../ssl-crt', 'server.crt');
-const startOfMonth = new Date();
+
     // Read the certificate and private key files
     const options = {
         key: fs.readFileSync(privateKeyPath),
@@ -36,6 +36,9 @@ app.get("/", (req, res) => {
   res.send("WebSocket server is up ✅");
 });
 
+const startOfMonth = new Date();
+// Create HTTP server
+const server = http.createServer(app);
 // Load self-signed certificate
 /*const server = https.createServer({
   cert: fs.readFileSync("./ssl.crt/server.crt"),
@@ -506,11 +509,11 @@ function resolveSymbols(symbols, total_array_expiries) {
 let port = 8443;
 
 // Create an HTTPS server
-let server  =    https.createServer(options, app).listen(port, () => {
+/*let server  =    https.createServer(options, app).listen(port, () => {
         console.log(`HTTPS server running on port ${port}`);
         console.log(`✅ Mock WSS server running at wss://localhost:${port}`);
     });
-
+*/
 
 // Create WebSocket server over HTTPS
 const wss = new WebSocketServer({ server });// new WebSocket.Server({ server });
@@ -525,7 +528,7 @@ wss.on("connection", (ws) => {
    ws.aslongSubscribedInterval = null; // to track interval
    let initialtrade =[]; let idSym = []; 
 const DELAY_BETWEEN_TRADES_MS = 30; // 30 mili seconds delay between individual ws.send() calls
-const CYCLE_INTERVAL_MS = 15000; //   9000;     // The original 17 seconds cycle
+const CYCLE_INTERVAL_MS = 9000;     // The original 17 seconds cycle
 
   const symbols_const = [
       /* { symbol: "NIFTY25093025300CE", id: "302418032",  },
@@ -1125,7 +1128,7 @@ function sendDelayedTrades(contracts, index = 0) {
     } else {
       console.log("[WSS] No matching records for this client");
     }
-  }, 6000);
+  }, 2000);
 
 
 
@@ -1141,7 +1144,12 @@ function sendDelayedTrades(contracts, index = 0) {
   });
 });
 
-
+// Use Render’s PORT (default to 3000 locally)
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`✅ WebSocket endpoint: wss://<your-app>.onrender.com`);
+});
 const expiries = [
   { code: "D16", label: "DEC16" },
   { code: "D23", label: "DEC23" },
