@@ -12,23 +12,7 @@ import { WebSocket } from "ws";
 import http from "http";
 import { WebSocketServer } from "ws";
 import express from "express";
-import  path from 'path' ;
-  import { fileURLToPath } from 'url';
-
-        // Get the current directory using ES module syntax
-        const __filename = fileURLToPath(import.meta.url);
-        const __dirname = path.dirname(__filename);
-
- // Define paths to your certificate files
-    const privateKeyPath = path.join(__dirname, '../ssl-key', 'server.key');
-    const certificatePath = path.join(__dirname, '../ssl-crt', 'server.crt');
-
-    // Read the certificate and private key files
-    const options = {
-        key: fs.readFileSync(privateKeyPath),
-        cert: fs.readFileSync(certificatePath)
-        // ca: fs.readFileSync(path.join(__dirname, 'cert', 'ca_bundle.crt')) // Optional: if you have a CA bundle
-    };
+ 
 
     const app = express();
 // normal REST route (Render needs this for health check)
