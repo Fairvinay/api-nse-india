@@ -97,6 +97,31 @@ const monthProperCodes = [
   "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
 ];
  const baseGlobalStrike = 25600;
+
+
+/**
+ * Robust date formatter to convert long date strings to YYMMDD
+ * @param {Date|string} dateInput 
+ * @returns {string} Formatted date as YYMMDD
+ */
+const formatToYYMMDD = (dateInput) => {
+  try {
+    const d = new Date(dateInput);
+    
+    // Check for invalid date
+    if (isNaN(d.getTime())) return "Invalid";
+
+    const year = d.getFullYear().toString().slice(-2); // Get last 2 digits
+    const month = (d.getMonth() + 1).toString().padStart(2, '0'); // Months are 0-indexed
+    const day = d.getDate().toString().padStart(2, '0');
+
+    return `${year}${month}${day}`;
+  } catch (error) {
+    return "Error";
+  }
+};
+
+
 /**
  * Generate short expiry code from a Date
  * Example: Date(2025-10-07) → "25OCT07"
@@ -105,8 +130,10 @@ function getShortYYMMDD(dateInput) {
 
  const date = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
 
-  if (isNaN(date)) {
-    throw new Error(`Invalid date: ${dateInput}`);
+  if ( !(date instanceof Date) ||  !isNaN(date.getTime())) {
+    // throw new Error(`Invalid date: ${dateInput} `);
+         console.log("getShortYYMMDD found invalid date " , dateInput); 
+           return 
   }
 
   const yy = String(date.getFullYear()).slice(-2);   // last 2 digits of year
@@ -121,25 +148,52 @@ function getShortYYMMDD(dateInput) {
  */
 function getShortYYMMDDDigits(dateInput) {
 
- const date = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
+ const date = dateInput !== undefined && (dateInput instanceof Date) ? dateInput : new Date(dateInput);
 
-  if (isNaN(date)) {
-    throw new Error(`Invalid date: ${dateInput}`);
+  /*if (!(date instanceof Date) || !isNaN(date.getTime())) {
+    //throw new Error(`Invalid date: ${dateInput}`);
+         console.log("getShortYYMMDDDigits found invalid date " , dateInput); 
+      return ; 
   }
-
+ 
   const yy = String(date.getFullYear()).slice(-2);   // last 2 digits of year
   const mCode =  date.getMonth()+1 < 10 ?   `0` + date.getMonth()+1 :  date.getMonth()+1 ;         // 3-letter month
   const dd = String(date.getDate()).padStart(2, "0"); // 2-digit day
-  return `${yy}${mCode}${dd}`;
+  return `${yy}${mCode}${dd}`;*/
+
+   try { 
+    const d = new Date(dateInput);
+          // Check for invalid date
+    if (isNaN(d.getTime())) return "Invalid";
+
+    const year = d.getFullYear().toString().slice(-2); // Get last 2 digits
+    const month = (d.getMonth() + 1).toString().padStart(2, '0'); // Months are 0-indexed
+    const day = d.getDate().toString().padStart(2, '0');
+
+    return `${year}${month}${day}`;
+
+   } 
+   catch(er){
+        return `380105`; /// future date 
+    }
+
+
+
+
 }
 
 
 
 
 function formatTuesday(date) {
-  const yy = String(date.getFullYear()).slice(-2);
-  const mCode = monthCodes[date.getMonth()];
-  const dd = String(date.getDate()).padStart(2, "0");
+const datein = date !==undefined && (date instanceof Date) ? new Date(date) : "";
+  if(datein ===""){
+     console.log("format failed provide a proper date ");
+     return;
+   }
+  const yy = String(datein.getFullYear()).slice(-2);
+  const mCode = monthCodes[datein.getMonth()];
+  const dd = String(datein.getDate()).padStart(2, "0");
   return `${yy}${mCode}${dd}`;
 }
 
@@ -172,7 +226,10 @@ let tuesdays = getTuesdaysOfMonth(currentYear, currentMonthIndex, currentMonthDa
    tuesdays = tuesdays.concat(caculateTuesdayOfNextMonth(isLastMonthofYear));
 
 console.log("All Tuesdays:", tuesdays.map(formatTuesday));
-console.log("First Tuesday of October 2025:", formatTuesday(tuesdays[0]));
+tuesdays = tuesdays.filter(td => td !==undefined );
+console.log("All Tuesdays refined :", tuesdays.map(formatTuesday));
+
+//console.log("First Tuesday of October 2025:", formatTuesday(tuesdays[0]));
  // === 4. Trade generator ===
   function generateTrade(id, k_const) {
     return [
@@ -309,10 +366,11 @@ function generateTuesdayTrades(
   return result;
 }
  const current_month_expiries = tuesdays;
+console.log("Current month expiries " + current_month_expiries);
  // Map raw dates → { date, shortKey }
 const expiryObjects = current_month_expiries.map(d => ({
   date: d,
-  shortKey: getShortYYMMDD(d)
+  shortKey: formatToYYMMDD(d)
 }));
 const tuesdayObjects = current_month_expiries.map((d, indx) => ({
   date: getShortYYMMDDDigits(d),
@@ -323,7 +381,8 @@ expiryObjects.forEach( t => {
   console.log(`: ---------- date: ${t["date"]} shortKey: ${t["shortKey"]} `);
 })
 
-console.log(`: ---------- structure : ${JSON.stringify(expiryObjects)}   `);
+console.log(`: ----------expiryObjects structure : ${JSON.stringify(expiryObjects)}   `);
+console.log(`: ---------- tuesdayObjects structure : ${JSON.stringify(tuesdayObjects)}   `);
 current_month_nifty_expiries = generateTrades(expiryObjects);
 current_month_nifty_expiries_truedata = generateTuesdayTrades(tuesdayObjects);
 console.log(`current_month_nifty_expiries: ----------`);
