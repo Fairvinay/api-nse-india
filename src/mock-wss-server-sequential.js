@@ -112,7 +112,8 @@ const formatToYYMMDD = (dateInput) => {
     if (isNaN(d.getTime())) return "Invalid";
 
     const year = d.getFullYear().toString().slice(-2); // Get last 2 digits
-    const month = (d.getMonth() + 1).toString().padStart(2, '0'); // Months are 0-indexed
+   // const month = (d.getMonth() + 1).toString().padStart(2, '0'); // Months are 0-indexed this is TRUE DATA 
+    const month =  monthCodes[d.getMonth()];
     const day = d.getDate().toString().padStart(2, '0');
 
     return `${year}${month}${day}`;
