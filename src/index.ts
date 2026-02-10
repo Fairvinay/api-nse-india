@@ -57,14 +57,132 @@ export class NseIndia {
     private cookieUsedCount = 0
     private cookieExpiry = new Date().getTime() + (this.cookieMaxAge * 1000)
     private noOfConnections = 0
+    private fiveOther = ['RELIANCE', 'ICICI', 'HDFCBANK', 'AXISBANK', 'RBLBANK']
+    // Define the headers using the type for better IDE support
+   /* private myHeaders: AxiosRequestHeaders  = {
+            'Content-Type': 'application/json',
+          //   'Authorization': 'Bearer my-token',
+            'X-Custom-Header': 'custom-value' ,  Authorization: undefined
+            };
+            */
+    private async tryOut (symbol :any ) { 
+         let userAgent = new UserAgent().toString()
+         let re : any = undefined;
+      
+         // let intCfg: InternalAxiosRequestConfig<any> = {  headers: this.myHeaders }
+          try { 
+            re =  await axios.get(`${this.baseUrl}/get-quotes/equity?symbol=${symbol}`, {
+                headers: {...this.baseHeaders,'User-Agent': userAgent}
+           
+            })
+             if(re !==undefined){
+                console.log("NSEINDIA responded ")
+                    return re;
+            }   
+        } 
+        catch(err){
+             //  const mockedAxios = axios as jest.Mocked<typeof axios>;
+                 // Handle errors appropriately, potentially using AxiosError type
+                console.error(err);
+                return   Promise.resolve({
+                     data: [   {
+                        id: 1,
+                        name: 'Joe Doe'
+                        }]
+                     }); /*mockedAxios.get.mockResolvedValue({
+                        data: [
+                            {
+                            id: 1,
+                            name: 'Joe Doe'
+                            },
+                            {
+                            id: 2,
+                            name: 'Jane Doe'
+                            }
+                        ],
+                        });
+                        */
+                 /*  if (isAxiosError(err)) {
+                  console.error('Axios error:', err.message);
+                        // Construct a full dummy AxiosResponse
+                        const dummyResponse: AxiosResponse<any> = {
+                            data: {
+                            id: 'userId',
+                            name: 'Fallback User',
+                            },
+                            status: 200, // Or a status code indicating a fallback response, e.g., 200 OK
+                            statusText: 'OK (Fallback)',
+                            headers: {},
+                            config: intCfg, // Use the original request config
+                            request: err.request,
+                        };
+                        return dummyResponse;
+                        } */
+        }
+                throw new Error('Failed to fetch '+symbol);
+        }
     
-
+    private async getNifty50fiveOther() : Promise<any> {
+          let userAgent = new UserAgent().toString()
+        //let intCfg: InternalAxiosRequestConfig<any> = {  headers: this.myHeaders }
+          let response  = undefined; /* AxiosResponse<any> = {
+                        data: {
+                        id: 'dmu'+ '_' + Math.random()*25,
+                        name: 'Fallback User',
+                        },
+                        status: 200, // Or a status code indicating a fallback response, e.g., 200 OK
+                        statusText: 'OK (Fallback)',
+                        headers: {},
+                         config: intCfg, // Use the original request config
+                       // request: error.request,
+                    };*/
+                    for( let t = 0 ; t < this.fiveOther.length ; t++ ){
+                        let STOCK  = this.fiveOther[t];
+                                 response =await this.tryOut(STOCK) 
+                            if(response !==undefined){
+                                console.log("NSEINDIA responded  for "+STOCK)
+                                break;
+                                }   
+                    }
+                    this.fiveOther.forEach(
+                    async  (STOCK:any ) =>   {
+                            
+                        }
+          ) 
+          if ( response !== undefined){
+                 return response;
+          }
+          else {
+          //  const mockedAxios = axios as jest.Mocked<typeof axios>;
+             return  Promise.resolve({
+                data: [   {
+                        id: 1,
+                        name: 'Joe Doe'
+                        }]
+            }); /* mockedAxios.get.mockResolvedValue({
+                    data: [
+                        {
+                        id: 1,
+                        name: 'Joe Doe'
+                        },
+                        {
+                        id: 2,
+                        name: 'Jane Doe'
+                        }
+                    ],
+                    });*/
+          }
+         
+    }
     private async getNseCookies() {
         if (this.cookies === '' || this.cookieUsedCount > 10 || this.cookieExpiry <= new Date().getTime()) {
             this.userAgent = new UserAgent().toString()
-            const response = await axios.get(`${this.baseUrl}/get-quotes/equity?symbol=TCS`, {
+            /*const response = await axios.get(`${this.baseUrl}/get-quotes/equity?symbol=TCS`, {
                 headers: {...this.baseHeaders,'User-Agent': this.userAgent}
-            })
+            })*/
+            const response = await this.getNifty50fiveOther(); /*await axios.get(`${this.baseUrl}/get-quotes/equity?symbol=TCS`, {
+                headers: {...this.baseHeaders,'User-Agent': this.userAgent}
+            })*/
             const setCookies: string[] | undefined = response.headers['set-cookie']
             const cookies: string[] = []
             if (setCookies) {
@@ -96,15 +214,23 @@ export class NseIndia {
             }
             this.noOfConnections++
             try {
+                const nseCookies =       await this.getNseCookies()
+                if ( nseCookies !== undefined) { 
                 const response = await axios.get(url, {
-                    headers: {
-                        ...this.baseHeaders,
-                        'Cookie': await this.getNseCookies(),
-                        'User-Agent': this.userAgent
-                    }
-                })
-                this.noOfConnections--
-                return response.data
+                                    headers: {
+                                        ...this.baseHeaders,
+                                        'Cookie': nseCookies,
+                                        'User-Agent': this.userAgent
+                                    }
+                                })
+                                this.noOfConnections--
+                                return response.data
+
+                  }     
+                  else { 
+                    console.log('NSE did not sent cookies for any of the 5 '+ this.fiveOther.join(","));
+                  }
+               
             } catch (error) {
                 hasError = true
                 retries++
