@@ -12,8 +12,8 @@ import { WebSocket } from "ws";
 import http from "http";
 import { WebSocketServer } from "ws";
 import express from "express";
- 
-
+ import {loadSymbols , search  } from './csvworker-processor-new.mjs';
+let  totalSymbols = [];
     const app = express();
 // normal REST route (Render needs this for health check)
 app.get("/", (req, res) => {
@@ -320,7 +320,7 @@ function random9Digit() {
  */
 function generateTrades(
   expiries,
-  baseStrike = 25600, //26100,      // this needs to be categorised as configuration object or setting , others are at line 285 1276 
+  baseStrike = 24600, //26100,      // this needs to be categorised as configuration object or setting , others are at line 285 1276 
   steps = 7,   // this is for 7 strike prices lsiting 
   stepSize = 100,
   weeklyInterestRate = 15
@@ -664,6 +664,35 @@ for (const fyersKey in fyersStrikeMap) {
 }
 console.log(" calculated expiry fyersStrikeMap /truedataStrikeMap  approach "+JSON.stringify(expiryKeyMap))
 
+async function runFNO() {
+  try {
+    console.log("Fetching Symbols FNO data...");
+    // Await the result of the async function
+    const data = await loadSymbols();
+    totalSymbols = data;
+    console.log("Received: total "+data.length +" Symbols from Fyers ");
+  } catch (error) {
+    console.error("Error fetching data:", error);
+  }
+}
+console.log(" INITIALISING  for FNO symbols available " );
+    (async () => { 
+      
+           await  runFNO();
+           let tx = "SENSEX 12 Mar";
+            console.log("Searching for ", tx, "  in", totalSymbols.length, "...");
+            const test =  await search("SENSEX 12 Mar" , totalSymbols);
+           console.log("Search test results:", test.length, "found in", test.time, "ms");
+           if(Array.isArray(test.results)){
+             test.results.forEach((sr) => { 
+                console.log("record --> ",  JSON.stringify(sr));
+
+             });
+           }
+
+    })();
+ 
+    
 
 
 function buildSymbolLookup(total_array_expiries) {
