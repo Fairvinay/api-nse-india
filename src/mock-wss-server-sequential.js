@@ -13,6 +13,7 @@ import http from "http";
 import { WebSocketServer } from "ws";
 import express from "express";
  import {loadSymbols , search  } from './csvworker-processor-new.mjs';
+import {fetchNiftySpot    } from './stocknse-india-new.mjs';
 let  totalSymbols = [];
     const app = express();
 // normal REST route (Render needs this for health check)
@@ -142,7 +143,7 @@ const monthProperCodes = [
   "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
   "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
 ];
- const baseGlobalStrike = 25600;
+ let baseGlobalStrike = 25600;
 
 
 /**
@@ -308,6 +309,37 @@ let total_array_expiries_truedata = [] ;
 function random9Digit() {
   return Math.floor(100000000 + Math.random() * 900000000);
 }
+function getBaseFloor(num) {
+  return Math.floor(num / 100) * 100;
+}
+async function getNitfySpot() {
+  try {
+    const nifty = await fetchNiftySpot();
+    console.log("📈 NIFTY SPOT =", nifty);
+
+    baseGlobalStrike =   getBaseFloor(Math.round(nifty  )  )   ; // optional ATM rounding
+
+    return baseGlobalStrike;
+
+  } catch (err) {
+    console.error("Error fetching NIFTY:", err.message);
+    return baseGlobalStrike; // fallback
+  }
+}
+/*
+async function getNitfySpot () { 
+	
+	     (async () => {
+                            try {
+                              const nifty = await fetchNiftySpot();
+                                console.log("📈 NIFTY SPOT =", nifty);
+                              baseGlobalStrike =    nifty;
+                            } catch (err) {
+                                console.error(err.message);
+                            }
+                          })();
+	 
+}*/
 
 
 /**
@@ -321,7 +353,7 @@ function random9Digit() {
 function generateTrades(
   expiries,
   baseStrike = 24600, //26100,      // this needs to be categorised as configuration object or setting , others are at line 285 1276 
-  steps = 7,   // this is for 7 strike prices lsiting 
+  steps = 15,   // this is for 7 strike prices lsiting 
   stepSize = 100,
   weeklyInterestRate = 15
 ) {
@@ -443,7 +475,43 @@ usualOneMonthLetterTuesdays.forEach( (ts, inx) => {
            }
 } );
 
-current_month_nifty_expiries = generateTrades(expiryObjects);
+
+ 
+
+async function initOptionEngine() {
+
+ // GET the SPOT PRICE from stock nse india 
+// this will set the baseGlobalStrike
+  //await getNitfySpot(); 
+  const spot = await getNitfySpot();
+
+  console.log("Using Base Strike:", spot);
+
+  // 2️⃣ Generate option chains AFTER spot arrives
+  current_month_nifty_expiries =
+      generateTrades(expiryObjects, spot - 300);
+
+  current_month_nifty_expiries_truedata =
+      generateTuesdayTrades(tuesdayObjects, spot-300);
+
+  console.log("current_month_nifty_expiries:", current_month_nifty_expiries);
+  console.log("current_month_nifty_expiries_truedata:", current_month_nifty_expiries_truedata);
+	console.log(`current_month_nifty_expiries: ----------`);
+console.log(current_month_nifty_expiries);
+console.log(`current_month_nifty_expiries_truedata: ----------`);
+console.log(current_month_nifty_expiries_truedata);
+console.log(`total_array_expiries: ----------`);
+console.log(JSON.stringify(total_array_expiries));
+console.log(`total_array_expiries_truedata: ----------`);
+console.log(JSON.stringify(total_array_expiries_truedata));
+//console.log(`current_month_nifty_expiries: ${Array.isArray(current_month_nifty_expiries)} total: ${current_month_nifty_expiries.length}`);
+console.log(`total_array_expiries: ${Array.isArray(total_array_expiries)} total: ${total_array_expiries.length}`);
+}
+
+await initOptionEngine();
+
+/*
+current_month_nifty_expiries = generateTrades(expiryObjects,baseGlobalStrike);
 current_month_nifty_expiries_truedata = generateTuesdayTrades(tuesdayObjects);
 console.log(`current_month_nifty_expiries: ----------`);
 console.log(current_month_nifty_expiries);
@@ -455,7 +523,7 @@ console.log(`total_array_expiries_truedata: ----------`);
 console.log(JSON.stringify(total_array_expiries_truedata));
 //console.log(`current_month_nifty_expiries: ${Array.isArray(current_month_nifty_expiries)} total: ${current_month_nifty_expiries.length}`);
 console.log(`total_array_expiries: ${Array.isArray(total_array_expiries)} total: ${total_array_expiries.length}`);
-
+*/
 function extractExpiryStrikeMap(dataEntries, isFyers) {
   const map = {};
 
