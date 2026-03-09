@@ -20,6 +20,25 @@ let  totalSymbols = [];
 app.get("/", (req, res) => {
   res.send("WebSocket server is up ✅");
 });
+app.get("/recalculate-option-strikes",  async (req, res) => {
+    // res.send("WebSocket server is up ✅");
+    
+    await initOptionEngine();
+    	let datNow =   new Date().toISOString();
+  console.log("recacluated "+datNow +" current_month_nifty_expiries:", current_month_nifty_expiries);
+  console.log("recacluated "+datNow +" current_month_nifty_expiries_truedata:", current_month_nifty_expiries_truedata);
+	console.log(`current_month_nifty_expiries: ----------`);
+	console.log(current_month_nifty_expiries);
+	console.log(`current_month_nifty_expiries_truedata: ----------`);
+	console.log(current_month_nifty_expiries_truedata);
+	console.log(`total_array_expiries: ----------`);
+	console.log(JSON.stringify(total_array_expiries));
+		console.log(`total_array_expiries_truedata: ----------`);
+	console.log(JSON.stringify(total_array_expiries_truedata));
+//console.log(`current_month_nifty_expiries: ${Array.isArray(current_month_nifty_expiries)} total: ${current_month_nifty_expiries.length}`);
+	console.log(`total_array_expiries: ${Array.isArray(total_array_expiries)} total: ${total_array_expiries.length}`);
+     res.send (JSON.stringify(total_array_expiries));
+});
 
 const startOfMonth = new Date();
 // Create HTTP server
