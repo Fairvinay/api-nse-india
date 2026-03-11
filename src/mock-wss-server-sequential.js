@@ -25,7 +25,7 @@ app.get("/recalculate-option-strikes",  async (req, res) => {
     try {
 
     // 1️⃣ Read Authorization header
-    const authHeader = req.headers["Authorization"];
+    const authHeader = req.headers["auth_code"]; // Authorization allowed only when credentials placed on while get request done 
 
     if (!authHeader) {
       return res.status(401).json({ error: "Authorization header missing" });
