@@ -3,7 +3,7 @@
 import fetch from "node-fetch";
 
 const NSE_URL =  "https://artilleryfeed2.onrender.com/";  //"http://localhost:3065/";
-const FYERS_URL = "http://localhost:9384/stream";
+const FYERS_URL = "https://fyersfeed.onrender.com/stream";
 
 const FYERS_SYMBOL = "NSE:NIFTY50-INDEX";
 
@@ -107,7 +107,7 @@ async function fetchFromFyers(accessToken) {
 /* MASTER FETCH FUNCTION                                      */
 /* ---------------------------------------------------------- */
 
-export async function fetchNiftySpot() {
+export async function fetchNiftySpot(token) {
 
   console.log("🚀 Fetching NIFTY spot...");
 
@@ -120,18 +120,18 @@ export async function fetchNiftySpot() {
     return nseSpot;
 
   }
-  /*
+  
   console.log("⚠️ NSE unavailable. Trying FYERS...");
 
-  const fyersSpot = await fetchFromFyers(accessToken);
+  const fyersSpot = await fetchFromFyers(token);
 
   if (fyersSpot) {
 
     console.log("✅ NIFTY from FYERS:", fyersSpot);
     return fyersSpot;
 
-  } */
-
+  }  
+  
   console.log("❌ All sources failed");
   return 24400; 
   //throw new Error("Unable to fetch NIFTY spot");

@@ -22,22 +22,53 @@ app.get("/", (req, res) => {
 });
 app.get("/recalculate-option-strikes",  async (req, res) => {
     // res.send("WebSocket server is up ✅");
-    
-    await initOptionEngine();
+    try {
+
+    // 1️⃣ Read Authorization header
+    const authHeader = req.headers["Authorization"];
+
+    if (!authHeader) {
+      return res.status(401).json({ error: "Authorization header missing" });
+    }
+
+    // 2️⃣ Extract Bearer token
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({ error: "Bearer token missing" });
+    }
+
+    console.log("Received Token:", token);
+
+    // 3️⃣ Pass token to your engine
+    await initOptionEngine(token);
     	let datNow =   new Date().toISOString();
-  console.log("recacluated "+datNow +" current_month_nifty_expiries:", current_month_nifty_expiries);
-  console.log("recacluated "+datNow +" current_month_nifty_expiries_truedata:", current_month_nifty_expiries_truedata);
-	console.log(`current_month_nifty_expiries: ----------`);
-	console.log(current_month_nifty_expiries);
-	console.log(`current_month_nifty_expiries_truedata: ----------`);
-	console.log(current_month_nifty_expiries_truedata);
-	console.log(`total_array_expiries: ----------`);
-	console.log(JSON.stringify(total_array_expiries));
-		console.log(`total_array_expiries_truedata: ----------`);
-	console.log(JSON.stringify(total_array_expiries_truedata));
-//console.log(`current_month_nifty_expiries: ${Array.isArray(current_month_nifty_expiries)} total: ${current_month_nifty_expiries.length}`);
-	console.log(`total_array_expiries: ${Array.isArray(total_array_expiries)} total: ${total_array_expiries.length}`);
-     res.send (JSON.stringify(total_array_expiries));
+        console.log("recacluated "+datNow +" current_month_nifty_expiries:", current_month_nifty_expiries);
+        console.log("recacluated "+datNow +" current_month_nifty_expiries_truedata:", current_month_nifty_expiries_truedata);
+		console.log(`current_month_nifty_expiries: ----------`);
+		console.log(current_month_nifty_expiries);
+		console.log(`current_month_nifty_expiries_truedata: ----------`);
+		console.log(current_month_nifty_expiries_truedata);
+		console.log(`total_array_expiries: ----------`);
+		console.log(JSON.stringify(total_array_expiries));
+			console.log(`total_array_expiries_truedata: ----------`);
+		console.log(JSON.stringify(total_array_expiries_truedata));
+	//console.log(`current_month_nifty_expiries: ${Array.isArray(current_month_nifty_expiries)} total: ${current_month_nifty_expiries.length}`);
+		console.log(`total_array_expiries: ${Array.isArray(total_array_expiries)} total: ${total_array_expiries.length}`);
+	     res.send (JSON.stringify(total_array_expiries));
+     
+    } catch (err) {
+
+    console.error("Recalculate Option Strikes Error:", err);
+
+    res.status(500).json({
+      error: "Internal Server Error"
+    });
+
+  }   
+     
+     
+     
 });
 
 const startOfMonth = new Date();
@@ -331,9 +362,9 @@ function random9Digit() {
 function getBaseFloor(num) {
   return Math.floor(num / 100) * 100;
 }
-async function getNitfySpot() {
+async function getNitfySpot(access_token) {
   try {
-    const nifty = await fetchNiftySpot();
+    const nifty = await fetchNiftySpot(access_token);
     console.log("📈 NIFTY SPOT =", nifty);
 
     baseGlobalStrike =   getBaseFloor(Math.round(nifty  )  )   ; // optional ATM rounding
@@ -497,12 +528,12 @@ usualOneMonthLetterTuesdays.forEach( (ts, inx) => {
 
  
 
-async function initOptionEngine() {
+async function initOptionEngine(access_token) {
 
  // GET the SPOT PRICE from stock nse india 
 // this will set the baseGlobalStrike
   //await getNitfySpot(); 
-  const spot = await getNitfySpot();
+  const spot = await getNitfySpot(access_token);
 
   console.log("Using Base Strike:", spot);
 
