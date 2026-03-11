@@ -25,10 +25,22 @@ app.get("/recalculate-option-strikes",  async (req, res) => {
     try {
 
     // 1️⃣ Read Authorization header
-    const authHeader = req.headers["auth_code"]; // Authorization allowed only when credentials placed on while get request done 
+    let authHeader = req.headers["auth_code"]; // Authorization allowed only when credentials placed on while get request done 
 
     if (!authHeader) {
-      return res.status(401).json({ error: "Authorization header missing" });
+    	  authHeader = req.headers["Auth_code"]; 
+    	  if (!authHeader) {
+    	   	    console.log("Received neither auth_code nor Auth_code:");
+            //  return res.status(401).json({ error: "auth_code/Auth_code or Authorization header missing" });
+          }
+    	  authHeader = req.headers["Authorization"]; 
+    	   if (!authHeader) {
+    	   	    console.log("Received neither (auth_code/Auth_code) nor Authorization:");
+              return res.status(401).json({ error: "auth_code/Auth_code or Authorization header missing" });
+          }
+          else { 
+          	    console.log("Received  either auth_code or  Authorization:");
+          }
     }
 
     // 2️⃣ Extract Bearer token
