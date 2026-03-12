@@ -13,80 +13,62 @@ import http from "http";
 import { WebSocketServer } from "ws";
 import express from "express";
  import {loadSymbols , search  } from './csvworker-processor-new.mjs';
-import {fetchNiftySpot    } from './stocknse-india-new.mjs';
+//import {fetchNiftySpot    } from './stocknse-india-new.mjs';
+import {fetchNiftySpot    } from './stocknse-india-ultrafast.mjs';
 let  totalSymbols = [];
+
+// Build expiry → trades map
+let current_month_nifty_expiries = {};
+let current_month_nifty_expiries_truedata = {};
+let total_array_expiries = [] ;
+let total_array_expiries_truedata = [] ;
+
+
+
     const app = express();
 // normal REST route (Render needs this for health check)
 app.get("/", (req, res) => {
   res.send("WebSocket server is up ✅");
 });
-app.get("/recalculate-option-strikes",  async (req, res) => {
-    // res.send("WebSocket server is up ✅");
-    try {
-
-    // 1️⃣ Read Authorization header
-    let authHeader = req.headers["auth_code"]; // Authorization allowed only when credentials placed on while get request done 
-
+app.get("/recalculate-option-strikes", async (req, res) => {
+  try {
+    let authHeader =
+      req.headers["auth_code"] ||
+      req.headers["Auth_code"] ||
+      req.headers["Authorization"] ||
+      req.headers["x-auth-token"];
     if (!authHeader) {
-    	  authHeader = req.headers["Auth_code"]; 
-    	  if (!authHeader) {
-    	   	    console.log("Received neither auth_code nor Auth_code:");
-            //  return res.status(401).json({ error: "auth_code/Auth_code or Authorization header missing" });
-          }
-    	  authHeader = req.headers["Authorization"]; 
-    	   if (!authHeader) {
-    	   	    console.log("Received neither (auth_code/Auth_code) nor Authorization:");
-             
-          }
-           authHeader = req.headers['x-auth-token'];
-          
-          if (!authHeader) {
-          	   console.log("Received neither (auth_code/Auth_code) , x-auth-token  nor Authorization:");
-          	    return res.status(401).json({ error: "auth_code/Auth_code , x-auth-token  or Authorization header missing" });
-          }
-          else { 
-          	    console.log("Received  either auth_code/Auth_code , x-auth-token or Authorization:");
-          }
+      return res.status(401).json({
+        error: "auth_code/Auth_code/x-auth-token/Authorization header missing"
+      });
     }
-
-    // 2️⃣ Extract Bearer token
-    const token = authHeader.split(" ")[1];
-
+    const token = authHeader.split(" ")[1] || authHeader;
     if (!token) {
       return res.status(401).json({ error: "Bearer token missing" });
     }
-
     console.log("Received Token:", token);
-
-    // 3️⃣ Pass token to your engine
+    // 🚀 WAIT for full engine completion
     await initOptionEngine(token);
-    	let datNow =   new Date().toISOString();
-        console.log("recacluated "+datNow +" current_month_nifty_expiries:", current_month_nifty_expiries);
-        console.log("recacluated "+datNow +" current_month_nifty_expiries_truedata:", current_month_nifty_expiries_truedata);
-		console.log(`current_month_nifty_expiries: ----------`);
-		console.log(current_month_nifty_expiries);
-		console.log(`current_month_nifty_expiries_truedata: ----------`);
-		console.log(current_month_nifty_expiries_truedata);
-		console.log(`total_array_expiries: ----------`);
-		console.log(JSON.stringify(total_array_expiries));
-			console.log(`total_array_expiries_truedata: ----------`);
-		console.log(JSON.stringify(total_array_expiries_truedata));
-	//console.log(`current_month_nifty_expiries: ${Array.isArray(current_month_nifty_expiries)} total: ${current_month_nifty_expiries.length}`);
-		console.log(`total_array_expiries: ${Array.isArray(total_array_expiries)} total: ${total_array_expiries.length}`);
-	     res.send (JSON.stringify(total_array_expiries));
-     
-    } catch (err) {
-
+    // 🚀 Sort expiries after generation
+    total_array_expiries = sortExpiries(total_array_expiries);
+    const datNow = new Date().toISOString();
+    console.log("Recalculation completed:", datNow);
+    console.log("Total expiries:", total_array_expiries.length);
+    res.json(total_array_expiries); 
+     /* 
+       res.json({
+      expiries: current_month_nifty_expiries,
+      truedata: current_month_nifty_expiries_truedata
+    });	 
+     */
+    
+  } catch (err) {
     console.error("Recalculate Option Strikes Error:", err);
-
     res.status(500).json({
-      error: "Internal Server Error"
+      error: "Internal Server Error",
+      message: err.message
     });
-
-  }   
-     
-     
-     
+  }
 });
 
 const startOfMonth = new Date();
@@ -366,11 +348,7 @@ let usualOneMonthLetterTuesdays = tuesdays.map(formatTuesday)
       "0","0","0","0","0"
     ];
   }
-// Build expiry → trades map
-let current_month_nifty_expiries = {};
-let current_month_nifty_expiries_truedata = {};
-let total_array_expiries = [] ;
-let total_array_expiries_truedata = [] ;
+
 /**
  * Generate a random 9-digit integer
  */
@@ -544,38 +522,48 @@ usualOneMonthLetterTuesdays.forEach( (ts, inx) => {
 } );
 
 
- 
+ async function initOptionEngine(access_token) {
 
-async function initOptionEngine(access_token) {
-
- // GET the SPOT PRICE from stock nse india 
-// this will set the baseGlobalStrike
-  //await getNitfySpot(); 
+  // 🔴 reset global arrays before regeneration
+  total_array_expiries = [];
+  total_array_expiries_truedata = [];
+   current_month_nifty_expiries = [];
+  current_month_nifty_expiries_truedata = [];
+  
   const spot = await getNitfySpot(access_token);
 
   console.log("Using Base Strike:", spot);
 
-  // 2️⃣ Generate option chains AFTER spot arrives
   current_month_nifty_expiries =
       generateTrades(expiryObjects, spot - 300);
 
   current_month_nifty_expiries_truedata =
-      generateTuesdayTrades(tuesdayObjects, spot-300);
+      generateTuesdayTrades(tuesdayObjects, spot - 300);
+  
+  // 🔵 sort immediately
+  current_month_nifty_expiries =
+      sortExpiries(current_month_nifty_expiries);
 
-  console.log("current_month_nifty_expiries:", current_month_nifty_expiries);
-  console.log("current_month_nifty_expiries_truedata:", current_month_nifty_expiries_truedata);
-	console.log(`current_month_nifty_expiries: ----------`);
-console.log(current_month_nifty_expiries);
-console.log(`current_month_nifty_expiries_truedata: ----------`);
-console.log(current_month_nifty_expiries_truedata);
-console.log(`total_array_expiries: ----------`);
-console.log(JSON.stringify(total_array_expiries));
-console.log(`total_array_expiries_truedata: ----------`);
-console.log(JSON.stringify(total_array_expiries_truedata));
-//console.log(`current_month_nifty_expiries: ${Array.isArray(current_month_nifty_expiries)} total: ${current_month_nifty_expiries.length}`);
-console.log(`total_array_expiries: ${Array.isArray(total_array_expiries)} total: ${total_array_expiries.length}`);
+  current_month_nifty_expiries_truedata =
+      sortExpiries(current_month_nifty_expiries_truedata);
+
+  total_array_expiries =
+      sortExpiries(total_array_expiries);
+
+  total_array_expiries_truedata =
+      sortExpiries(total_array_expiries_truedata);
+
+  console.log("Option engine recalculated and sorted.");
+  console.log("Option engine recalculated successfully.");
 }
-
+function sortExpiries(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.sort((a, b) => {
+    const expA = a[0];
+    const expB = b[0];
+    return expA.localeCompare(expB);
+  });
+}
 await initOptionEngine();
 
 /*
