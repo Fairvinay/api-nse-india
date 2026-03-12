@@ -36,10 +36,16 @@ app.get("/recalculate-option-strikes",  async (req, res) => {
     	  authHeader = req.headers["Authorization"]; 
     	   if (!authHeader) {
     	   	    console.log("Received neither (auth_code/Auth_code) nor Authorization:");
-              return res.status(401).json({ error: "auth_code/Auth_code or Authorization header missing" });
+             
+          }
+           authHeader = req.headers['x-auth-token'];
+          
+          if (!authHeader) {
+          	   console.log("Received neither (auth_code/Auth_code) , x-auth-token  nor Authorization:");
+          	    return res.status(401).json({ error: "auth_code/Auth_code , x-auth-token  or Authorization header missing" });
           }
           else { 
-          	    console.log("Received  either auth_code or  Authorization:");
+          	    console.log("Received  either auth_code/Auth_code , x-auth-token or Authorization:");
           }
     }
 
