@@ -8,8 +8,8 @@ const FYERS_URL = "https://fyersfeed.onrender.com/stream";
 
 const FYERS_SYMBOL = "NSE:NIFTY50-INDEX";
 
-const TIMEOUT = 5000;
-const TIMEOUTFYERS = 10000;
+const TIMEOUT = 45000;
+const TIMEOUTFYERS = 100000;
 
 /* ---------------------------------------------------------- */
 /* GENERIC TIMEOUT FETCH                                      */
@@ -24,11 +24,14 @@ async function fetchJSON(url, controller) {
     const res = await fetch(url, { signal: controller.signal });
 
     if (!res.ok) throw new Error("HTTP " + res.status);
+    let kt = await res.json();
+    console.log("fetchJSON success "+ JSON.stringify(kt);
 
-    return await res.json();
+
+    return kt;
 
   } finally {
-
+    console.log("fetchJSON finally "+timeout);
     clearTimeout(timeout);
 
   }
@@ -131,6 +134,9 @@ export async function fetchNiftySpot(token) {
   .then(v => {
     if (!v) {  console.log(`could not load from  ${NSE_URL} data`);  } 
     return { source: "NSE_URL", value: v };
+  }) .catch(err => {
+    console.log(` NSE_URL ${NSE_URL}  failed:  ${err.message} `  );
+    throw err; // 🔥 IMPORTANT → rethrow for Promise.any
   });
 
     const p2 = fetchJSON(NSE_URL2, controller2)
@@ -138,12 +144,19 @@ export async function fetchNiftySpot(token) {
   .then(v => {
     if (!v) { console.log(`could not load from  ${NSE_URL2} data`);  } 
     return { source: "NSE_URL2", value: v };
+  }).catch(err => {
+    console.log(` NSE_URL2 ${NSE_URL2}  failed:  ${err.message} `  );
+    throw err; // 🔥 IMPORTANT → rethrow for Promise.any
   });
+
 
    const p3 = fetchFyers(token, controller3)
   .then(v => {
     if (!v) {  console.log(`could not load from FYERS  ${FYERS_URL} data`);  } 
     return { source: "FYERS", value: v };
+  }) .catch(err => {
+    console.log(`  FYERS ${FYERS_URL}  failed: ${err.message} `);
+    throw err;
   });
 
     const result = await Promise.any([p1, p2, p3]);
@@ -161,11 +174,17 @@ export async function fetchNiftySpot(token) {
 
     }
 
-  } catch {
-
+  } catch (err) {
     console.log("⚠ All providers failed");
 
-  }
+   if (err instanceof AggregateError) {
+        err.errors.forEach((e, i) => {
+         console.log(`❌ Error ${i + 1}:`, e.message);
+       });
+   } else {
+      console.log("Unexpected error:", err);
+   }
+}
 
   return 24400;
 
