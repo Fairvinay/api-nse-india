@@ -39,7 +39,7 @@ function parseYahoo(json) {
   return Number(price);
 }
 
-export async function fetchNiftySpot(retries = 3) {
+export async function fetchNiftySpotExt(retries = 3) {
   for (let i = 1; i <= retries; i++) {
     try {
       const json = await fetchWithTimeout(YAHOO_URL, TIMEOUT);
@@ -68,7 +68,7 @@ export async function fetchNiftySpot(retries = 3) {
 
 // Run
 (async () => {
-  const price = await fetchNiftySpot();
+  const price = await fetchNiftySpotExt();
    globalPrice = price;
   console.log("Final:", price);
 })();

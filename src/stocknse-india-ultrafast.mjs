@@ -1,7 +1,7 @@
 // stocknse-india-ultrafast.mjs
 
 import fetch from "node-fetch";
-import { fetchNiftySpot } from "./nifty-fetch.js";
+import { fetchNiftySpotExt } from "./nifty-fetch.js";
 const NSE_URL = "https://artilleryfeed2.onrender.com/";
 const NSE_URL2 = "https://scraper-api-eyiz.onrender.com/";
 const FYERS_URL = "https://fyersfeed.onrender.com/stream";
@@ -207,7 +207,7 @@ export async function fetchNiftySpot(token) {
         try {
 	    console.log("🚀 Fetching NIFTY safely...");
 
-	    const price = await withTimeout(fetchNiftySpot(), 7000);
+	    const price = await withTimeout(fetchNiftySpotExt(), 7000);
 
 	    if (price !== null) {
 	      console.log("✅ NIFTY:", price);
