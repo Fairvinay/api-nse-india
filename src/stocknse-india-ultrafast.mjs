@@ -136,7 +136,8 @@ export async function fetchNiftySpot(token) {
     return { source: "NSE_URL", value: v };
   }) .catch(err => {
     console.log(` NSE_URL ${NSE_URL}  failed:  ${err.message} `  );
-    throw err; // 🔥 IMPORTANT → rethrow for Promise.any
+     return null;
+    //throw err; // 🔥 IMPORTANT → rethrow for Promise.any
   });
 
     const p2 = fetchJSON(NSE_URL2, controller2)
@@ -146,7 +147,8 @@ export async function fetchNiftySpot(token) {
     return { source: "NSE_URL2", value: v };
   }).catch(err => {
     console.log(` NSE_URL2 ${NSE_URL2}  failed:  ${err.message} `  );
-    throw err; // 🔥 IMPORTANT → rethrow for Promise.any
+     return null;
+    //throw err; // 🔥 IMPORTANT → rethrow for Promise.any
   });
 
 
@@ -156,12 +158,36 @@ export async function fetchNiftySpot(token) {
     return { source: "FYERS", value: v };
   }) .catch(err => {
     console.log(`  FYERS ${FYERS_URL}  failed: ${err.message} `);
-    throw err;
+    return null;
+    //throw err;
   });
 
-    const result = await Promise.any([p1, p2, p3]);
+    //const result = await Promise.any([p1, p2, p3]);
 
-    if (result.value  !== null &&  result.value  !== undefined ) {
+    const results = await Promise.allSettled([p1, p2, p3]);
+	
+    let validResults = [];
+
+    results.forEach((res, index) => {
+	  if (res.status === "fulfilled" && res.value?.value != null) {
+  		  validResults.push(res.value);
+  	   } else {
+    		console.log(`❌ Provider ${index + 1} failed:`,
+    		  res.reason?.message || "Invalid data");
+ 	 }
+     });
+
+   const priorityOrder = ["NSE_URL", "NSE_URL2","FYERS" ];
+   const best = priorityOrder
+  	.map(p => validResults.find(r => r.source === p))
+  	.find(Boolean);
+
+	if (best) {
+ 	 console.log(`✅ NIFTY from ${best.source}:`, best.value);
+ 	 return best.value;
+	}
+
+   /* if (result.value  !== null &&  result.value  !== undefined ) {
 
       console.log(`✅ NIFTY from ${result.source}:`, result.value);
 
@@ -172,7 +198,7 @@ export async function fetchNiftySpot(token) {
 
       return result.value;
 
-    }
+    }*/
 
   } catch (err) {
     console.log("⚠ All providers failed");
