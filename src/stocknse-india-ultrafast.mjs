@@ -25,13 +25,13 @@ async function fetchJSON(url, controller) {
 
     if (!res.ok) throw new Error("HTTP " + res.status);
     let kt = await res.json();
-    console.log("fetchJSON success "+ JSON.stringify(kt);
+    console.log("fetchJSON success "+ JSON.stringify(kt));
 
 
     return kt;
 
   } finally {
-    console.log("fetchJSON finally "+timeout);
+    console.log("fetchJSON finally timed out for " + url + " "+Date.now());
     clearTimeout(timeout);
 
   }
