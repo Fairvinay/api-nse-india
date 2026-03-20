@@ -1,7 +1,7 @@
 // stocknse-india-ultrafast.mjs
 
 import fetch from "node-fetch";
-
+import { fetchNiftySpot } from "./nifty-fetch.js";
 const NSE_URL = "https://artilleryfeed2.onrender.com/";
 const NSE_URL2 = "https://scraper-api-eyiz.onrender.com/";
 const FYERS_URL = "https://fyersfeed.onrender.com/stream";
@@ -10,6 +10,21 @@ const FYERS_SYMBOL = "NSE:NIFTY50-INDEX";
 
 const TIMEOUT = 45000;
 const TIMEOUTFYERS = 100000;
+
+/* ---------------------------------------------------------- */
+/* WITH TIMEOUT PROMISE                           */
+/* ---------------------------------------------------------- */
+
+
+function withTimeout(promise, ms = 7000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Global timeout exceeded")), ms)
+    ),
+  ]);
+}
+
 
 /* ---------------------------------------------------------- */
 /* GENERIC TIMEOUT FETCH                                      */
@@ -163,17 +178,18 @@ export async function fetchNiftySpot(token) {
   });
 
     //const result = await Promise.any([p1, p2, p3]);
-
+     let niftResult = {source: "", value: 0 };
     const results = await Promise.allSettled([p1, p2, p3]);
 	
     let validResults = [];
-
+    let countFailed = 0; 
     results.forEach((res, index) => {
 	  if (res.status === "fulfilled" && res.value?.value != null) {
   		  validResults.push(res.value);
   	   } else {
     		console.log(`❌ Provider ${index + 1} failed:`,
     		  res.reason?.message || "Invalid data");
+		 countFailed++;
  	 }
      });
 
@@ -186,7 +202,31 @@ export async function fetchNiftySpot(token) {
  	 console.log(`✅ NIFTY from ${best.source}:`, best.value);
  	 return best.value;
 	}
+    if(countFailed ===3) {
+		
+        try {
+	    console.log("🚀 Fetching NIFTY safely...");
 
+	    const price = await withTimeout(fetchNiftySpot(), 7000);
+
+	    if (price !== null) {
+	      console.log("✅ NIFTY:", price);
+	      niftResult.source = "yahoo"
+	       niftResult.value = price;	
+	    } else {
+	      console.log("⚠ Fallback value needed");
+               niftResult.source = "yahoo"
+	       niftResult.value = 23124.73;
+	    }
+
+	  } catch (err) {
+	    console.error("❌ Error:", err.message);
+	  }
+	return niftResult;
+	
+
+
+     }
    /* if (result.value  !== null &&  result.value  !== undefined ) {
 
       console.log(`✅ NIFTY from ${result.source}:`, result.value);
