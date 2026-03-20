@@ -7,6 +7,7 @@
   "repository": "https://github.com/hi-imcodeman/stock-nse-india.git",
   "author": "Asraf Ali <asraf.cse@gmail.com>",
   "license": "MIT",
+  "type":"module",
   "bin": {
     "nseindia": "build/cli/index.js"
   },
@@ -82,7 +83,8 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^4.6.3",
     "user-agents": "^1.0.104",
-    "yargs": "^17.7.2"
+    "yargs": "^17.7.2",
+     "node-fetch": "^3.3.2"
   },
   "keywords": [
     "nse",
