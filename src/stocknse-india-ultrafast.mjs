@@ -9,6 +9,7 @@ const FYERS_URL = "https://fyersfeed.onrender.com/stream";
 const FYERS_SYMBOL = "NSE:NIFTY50-INDEX";
 
 const TIMEOUT = 5000;
+const TIMEOUTFYERS = 10000;
 
 /* ---------------------------------------------------------- */
 /* GENERIC TIMEOUT FETCH                                      */
@@ -68,9 +69,13 @@ async function fetchFyers(token, controller) {
     const decoder = new TextDecoder();
 
     let buffer = "";
+	const start = Date.now();
+
 
     while (true) {
-
+       if (Date.now() - start > TIMEOUTFYERS) {
+  	   throw new Error("Fyers timeout");
+  	}
       const { value, done } = await reader.read();
 
       if (done) break;
@@ -121,20 +126,29 @@ export async function fetchNiftySpot(token) {
 
   try {
 
-    const p1 = fetchJSON(NSE_URL, controller1)
-      .then(parseNSE)
-      .then(v => ({ source: "NSE_URL", value: v }));
+   const p1 = fetchJSON(NSE_URL, controller1)
+  .then(parseNSE)
+  .then(v => {
+    if (!v) {  console.log(`could not load from  ${NSE_URL} data`);  } 
+    return { source: "NSE_URL", value: v };
+  });
 
     const p2 = fetchJSON(NSE_URL2, controller2)
-      .then(parseNSE)
-      .then(v => ({ source: "NSE_URL2", value: v }));
+  .then(parseNSE)
+  .then(v => {
+    if (!v) { console.log(`could not load from  ${NSE_URL2} data`);  } 
+    return { source: "NSE_URL2", value: v };
+  });
 
-    const p3 = fetchFyers(token, controller3)
-      .then(v => ({ source: "FYERS", value: v }));
+   const p3 = fetchFyers(token, controller3)
+  .then(v => {
+    if (!v) {  console.log(`could not load from FYERS  ${FYERS_URL} data`);  } 
+    return { source: "FYERS", value: v };
+  });
 
     const result = await Promise.any([p1, p2, p3]);
 
-    if (result.value) {
+    if (result.value  !== null &&  result.value  !== undefined ) {
 
       console.log(`✅ NIFTY from ${result.source}:`, result.value);
 
