@@ -109,7 +109,7 @@ build/
 # MacOS store file
 .DS_Store
 
-screens
+screens/
 examples
 docs
 prints
