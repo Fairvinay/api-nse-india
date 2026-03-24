@@ -362,8 +362,8 @@ async function getNitfySpot(access_token) {
   try {
     const nifty = await fetchNiftySpot(access_token);
     console.log("📈 NIFTY SPOT =", nifty);
-
-    baseGlobalStrike =   getBaseFloor(Math.round(nifty  )  )   ; // optional ATM rounding
+    let spotNifty = nifty.value;
+    baseGlobalStrike =   getBaseFloor(Math.round(spotNifty  )  )   ; // optional ATM rounding
 
     return baseGlobalStrike;
 
