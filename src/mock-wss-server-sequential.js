@@ -356,14 +356,37 @@ function random9Digit() {
   return Math.floor(100000000 + Math.random() * 900000000);
 }
 function getBaseFloor(num) {
+  if (isNaN(num)) return 23000; // safeguard
   return Math.floor(num / 100) * 100;
 }
 async function getNitfySpot(access_token) {
   try {
     const nifty = await fetchNiftySpot(access_token);
     console.log("📈 NIFTY SPOT =", nifty);
-    let spotNifty = nifty.value;
-    baseGlobalStrike =   getBaseFloor(Math.round(spotNifty  )  )   ; // optional ATM rounding
+    let spotNifty =23000;
+    //check nifty is object or number 
+    try {
+	  if (nifty && typeof nifty === "object" && nifty.value != null) {
+	    const val = Number(nifty.value);
+
+	    if (!isNaN(val) && val > 0) {
+	      spotNifty = val;
+	    }
+	  } 
+	  else {
+	    const val = Number(nifty);
+
+	    if (!isNaN(val) && val > 0) {
+	      spotNifty = val;
+	    }
+	  }
+
+	} catch (err) {
+	  console.log("❌ Spot parse error, defaulting =", spotNifty);
+	}
+	 const rounded = Math.round(spotNifty);
+ // const baseStrike = getBaseFloor(rounded);
+     baseGlobalStrike =  getBaseFloor(rounded);  //getBaseFloor(Math.round(spotNifty  )  )   ; // optional ATM rounding
 
     return baseGlobalStrike;
 
