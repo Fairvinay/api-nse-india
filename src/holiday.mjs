@@ -4,7 +4,7 @@
 const API_URL = "https://scraper-api-eyiz.onrender.com/api/holidays";
 
 // Retry wrapper
-async function fetchWithRetry(url, retries = 3, timeout = 5000) {
+export  async function fetchWithRetry(url, retries = 3, timeout = 5000) {
   for (let i = 1; i <= retries; i++) {
     try {
       const controller = new AbortController();
