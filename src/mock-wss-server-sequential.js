@@ -15,6 +15,8 @@ import express from "express";
  import {loadSymbols , search  } from './csvworker-processor-new.mjs';
 //import {fetchNiftySpot    } from './stocknse-india-new.mjs';
 import {fetchNiftySpot    } from './stocknse-india-ultrafast.mjs';
+import { isTodayFOHoliday , fetchWithRetry ,  adjustExpiryAndRebuild } from "./holiday.mjs";
+
 let  totalSymbols = [];
 
 // Build expiry → trades map
@@ -569,15 +571,26 @@ usualOneMonthLetterTuesdays.forEach( (ts, inx) => {
 
   current_month_nifty_expiries_truedata =
       sortExpiries(current_month_nifty_expiries_truedata);
+  console.log("current_month_nifty_expiries :: "+ JSON.stringify(current_month_nifty_expiries));
+	  const holidayData = await fetchWithRetry(API_URL);
+	const holidaysFO = holidayData.FO;
 
+	const adjustedExpiries = adjustExpiryAndRebuild(
+	  total_array_expiries,
+	  holidaysFO
+	);
+	  console.log("adjustedExpiries :: "+ JSON.stringify(adjustedExpiries));
   total_array_expiries =
-      sortExpiries(total_array_expiries);
+      sortExpiries(adjustedExpiries);
 
   total_array_expiries_truedata =
       sortExpiries(total_array_expiries_truedata);
 
   console.log("Option engine recalculated and sorted.");
   console.log("Option engine recalculated successfully.");
+   console.log("total_array_expiries :: "+ JSON.stringify(total_array_expiries));
+    
+    
 }
 function sortExpiries(arr) {
   if (!Array.isArray(arr)) return [];
