@@ -1,7 +1,7 @@
 
 
 
-const API_URL = "https://scraper-api-eyiz.onrender.com/api/holidays";
+export const API_URL = "https://scraper-api-eyiz.onrender.com/api/holidays";
 
 // Retry wrapper
 export  async function fetchWithRetry(url, retries = 3, timeout = 5000) {

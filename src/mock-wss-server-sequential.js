@@ -15,7 +15,7 @@ import express from "express";
  import {loadSymbols , search  } from './csvworker-processor-new.mjs';
 //import {fetchNiftySpot    } from './stocknse-india-new.mjs';
 import {fetchNiftySpot    } from './stocknse-india-ultrafast.mjs';
-import { isTodayFOHoliday , fetchWithRetry ,  adjustExpiryAndRebuild } from "./holiday.mjs";
+import { isTodayFOHoliday , fetchWithRetry , API_URL ,  adjustExpiryAndRebuild } from "./holiday.mjs";
 
 let  totalSymbols = [];
 
