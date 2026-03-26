@@ -1,7 +1,7 @@
 
 
 
-export const API_URL = "https://scraper-api-eyiz.onrender.com/api/holidays";
+export const API_URL = "https://artilleryfeed2.onrender.com/api/holidays"; // "https://scraper-api-eyiz.onrender.com/api/holidays";
 
 // Retry wrapper
 export  async function fetchWithRetry(url, retries = 3, timeout = 5000) {
@@ -105,7 +105,14 @@ function parseSymbolToDate(symbol) {
 
   return new Date(year, monthIndex, day);
 }
+function formatHolidayDate(date) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
 
+  return `${day}-${month}-${year}`;
+}
 function formatDate(date) {
   const day = String(date.getDate()).padStart(2, "0");
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -116,7 +123,10 @@ function formatDate(date) {
 }
 
 function isHoliday(date, holidaysFO) {
-  const formatted = formatDate(date);
+  let formatted = formatDate(date);
+     if(formatted ===undefined ){
+            formatted = formatHolidayDate(date);
+      }
   return holidaysFO.some(h => h.tradingDate === formatted);
 }
 
@@ -148,7 +158,20 @@ function rebuildSymbolWithNewDate(symbol, newDate) {
 
   return `${prefix}${year}${monthCode}${newDay}${strike}${type}`;
 }
+export function adjustForHoliday(date, holidaysFO) {
+  const d = new Date(date);
 
+  while (true) {
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+
+    if (!isWeekend && !isHoliday(d, holidaysFO)) {
+      return d;
+    }
+
+    // 🔥 move backward
+    d.setDate(d.getDate() - 1);
+  }
+}
 export function adjustExpiryAndRebuild(total_array_expiries, holidaysFO) {
   const updated = {};
 

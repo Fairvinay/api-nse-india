@@ -15,9 +15,67 @@ import express from "express";
  import {loadSymbols , search  } from './csvworker-processor-new.mjs';
 //import {fetchNiftySpot    } from './stocknse-india-new.mjs';
 import {fetchNiftySpot    } from './stocknse-india-ultrafast.mjs';
-import { isTodayFOHoliday , fetchWithRetry , API_URL ,  adjustExpiryAndRebuild } from "./holiday.mjs";
+import { isTodayFOHoliday , fetchWithRetry , API_URL ,  adjustExpiryAndRebuild , adjustForHoliday } from "./holiday.mjs";
 
-let  totalSymbols = [];
+
+
+process.on("uncaughtException", (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("🔥 UNHANDLED REJECTION:", reason);
+});
+
+process.on("warning", (warning) => {
+  console.warn("⚠️ Node Warning:", warning);
+});
+
+// ########################################################################################   AUXILARY FUNCTIONS 
+async function safeExecute(fn, name = "task", retries = 5) {
+  for (let i = 1; i <= retries; i++) {
+    try {
+      console.log(`▶️ ${name} attempt ${i}`);
+      return await fn();
+    } catch (err) {
+      console.error(`❌ ${name} failed (attempt ${i}):`, err.message);
+
+      if (i === retries) {
+        console.error(`🚨 ${name} failed after ${retries} retries`);
+        return null; // DO NOT THROW → prevents crash
+      }
+
+      await new Promise(r => setTimeout(r, 1000 * i)); // backoff
+    }
+  }
+}
+async function retryForever(fn, name, delay = 3000) {
+  while (true) {
+    try {
+      console.log(`🔁 ${name} starting...`);
+      const result = await fn();
+
+      if (result) {
+        console.log(`✅ ${name} successful`);
+        return result;
+      }
+
+      console.log(`⚠️ ${name} returned empty, retrying...`);
+    } catch (err) {
+      console.error(`❌ ${name} failed:`, err.message);
+    }
+
+    await new Promise(r => setTimeout(r, delay));
+  }
+}
+// ######################################################################################################## AUXILARY FUNCTIONS 
+
+
+
+
+let  totalSymbols = [];   // TOTAL NIFTY , SENSEX , BANKNIFTY SYMBOLS 
+let expiryObjects =[];
+let tuesdayObjects = [];
 
 // Build expiry → trades map
 let current_month_nifty_expiries = {};
@@ -82,7 +140,7 @@ const server = http.createServer(app);
   key: fs.readFileSync("./ssl.key/server.key")
 });*/
 
-function getTuesdaysOfMonth(year, monthIndex , day) {
+function getTuesdaysOfMonth(year, monthIndex , day,   holidaysFO) {
   // monthIndex: 0 = January, 9 = October
   const tuesdays = [];
 
@@ -102,8 +160,15 @@ function getTuesdaysOfMonth(year, monthIndex , day) {
        console.log(" furture day "+date.toString());
      //   if (date.getDay() >= day || date.getDate() >= 30 ){
         if (date.getDay() >= day || date.getDate() >= startOfMonth.getDate() ){
-           console.log("Adding tuesday "+ day+ " being aded "+date.toString());
-    tuesdays.push(new Date(date)); } }
+        	  console.log("Adding tuesday "+ day+ " being aded "+date.toString());
+        	   // ✅ 🔥 FIX: Adjust holiday here
+             let adjustedDate = adjustForHoliday(date, holidaysFO);
+        	  console.log("Original Tuesday:", date.toString());
+             console.log("Adjusted Expiry:", adjustedDate.toString());
+         
+            tuesdays.push(new Date(adjustedDate)); 
+        }
+     }
     date.setDate(date.getDate() + 7);
   }
   console.log("getTuesdays before return "+JSON.stringify(tuesdays));
@@ -325,14 +390,8 @@ const caculateTuesdayOfNextMonth = (isLastMonthofYear) => {
         }
 }
 
-// Example: First Tuesday of October 2025
-let tuesdays = getTuesdaysOfMonth(currentYear, currentMonthIndex, currentMonthDay); // 9 = October
-   tuesdays = tuesdays.concat(caculateTuesdayOfNextMonth(isLastMonthofYear));
 
-console.log("All Tuesdays:", tuesdays.map(formatTuesday));
-tuesdays = tuesdays.filter(td => td !==undefined );
-console.log("All Tuesdays refined :", tuesdays.map(formatTuesday));
-let usualOneMonthLetterTuesdays = tuesdays.map(formatTuesday)
+
 //console.log("First Tuesday of October 2025:", formatTuesday(tuesdays[0]));
  // === 4. Trade generator ===
   function generateTrade(id, k_const) {
@@ -363,30 +422,36 @@ function getBaseFloor(num) {
 }
 async function getNitfySpot(access_token) {
   try {
-    const nifty = await fetchNiftySpot(access_token);
+       const result = await safeExecute(
+           () => fetchNiftySpot(access_token),
+                 "Fetch NIFTY Spot"
+         );
+
+
+    const nifty =result; //await fetchNiftySpot(access_token);
     console.log("📈 NIFTY SPOT =", nifty);
     let spotNifty =23000;
     //check nifty is object or number 
     try {
-	  if (nifty && typeof nifty === "object" && nifty.value != null) {
-	    const val = Number(nifty.value);
+    if (nifty && typeof nifty === "object" && nifty.value != null) {
+      const val = Number(nifty.value);
 
-	    if (!isNaN(val) && val > 0) {
-	      spotNifty = val;
-	    }
-	  } 
-	  else {
-	    const val = Number(nifty);
+      if (!isNaN(val) && val > 0) {
+        spotNifty = val;
+      }
+    } 
+    else {
+      const val = Number(nifty);
 
-	    if (!isNaN(val) && val > 0) {
-	      spotNifty = val;
-	    }
-	  }
+      if (!isNaN(val) && val > 0) {
+        spotNifty = val;
+      }
+    }
 
-	} catch (err) {
-	  console.log("❌ Spot parse error, defaulting =", spotNifty);
-	}
-	 const rounded = Math.round(spotNifty);
+  } catch (err) {
+    console.log("❌ Spot parse error, defaulting =", spotNifty);
+  }
+   const rounded = Math.round(spotNifty);
  // const baseStrike = getBaseFloor(rounded);
      baseGlobalStrike =  getBaseFloor(rounded);  //getBaseFloor(Math.round(spotNifty  )  )   ; // optional ATM rounding
 
@@ -429,8 +494,23 @@ function generateTrades(
   weeklyInterestRate = 15
 ) {
   const result = {};
+    if (!Array.isArray(expiries)) {
+    console.log("❌ expiries is not array");
+    return result;
+  }
+
 
   expiries.forEach(exp => {
+
+
+         if (!exp || typeof exp.shortKey !== "string") {
+      console.log("❌ Skipping invalid expiry:", exp);
+      return;
+    }
+
+
+
+
     const trades = [];
 
     for (let i = 0; i < steps; i++) {
@@ -519,79 +599,129 @@ function generateTuesdayTrades(
 
   return result;
 }
- const current_month_expiries = tuesdays;
-console.log("Current month expiries " + current_month_expiries);
- // Map raw dates → { date, shortKey }
-const expiryObjects = current_month_expiries.map(d => ({
-  date: d,
-  shortKey: formatToYYMMDD(d)
-}));
-const tuesdayObjects = current_month_expiries.map((d, indx) => ({
-  date: getShortYYMMDDDigits(d),
-  shortKey: indx
-}));
-console.log(` weekly epxiry date codes : ----------`);
-expiryObjects.forEach( t => {
-  console.log(`: ---------- date: ${t["date"]} shortKey: ${t["shortKey"]} `);
-})
-
-console.log(`: ----------expiryObjects structure : ${JSON.stringify(expiryObjects)}   `);
-console.log(`: ---------- tuesdayObjects structure : ${JSON.stringify(tuesdayObjects)}   `);
-let mapperUsualwithActual = new Map();
-usualOneMonthLetterTuesdays.forEach( (ts, inx) => { 
-            let fyersUsual = ts; 
-            let properFyers = tuesdayObjects[inx].date;
-           if (properFyers) {
-             mapperUsualwithActual.set(ts, properFyers);
-           }
-} );
+ 
 
 
  async function initOptionEngine(access_token) {
-
+   return await safeExecute(async () => {
   // 🔴 reset global arrays before regeneration
-  total_array_expiries = [];
-  total_array_expiries_truedata = [];
-   current_month_nifty_expiries = [];
-  current_month_nifty_expiries_truedata = [];
+        total_array_expiries = [];
+        total_array_expiries_truedata = [];
+         current_month_nifty_expiries = [];
+        current_month_nifty_expiries_truedata = [];
+        
+        const spot = await getNitfySpot(access_token);
+
+        console.log("Using Base Strike:", spot);
+
+        current_month_nifty_expiries =
+            generateTrades(expiryObjects, spot - 300);
+
+        current_month_nifty_expiries_truedata =
+            generateTuesdayTrades(tuesdayObjects, spot - 300);
   
-  const spot = await getNitfySpot(access_token);
+        // 🔵 sort immediately
+        current_month_nifty_expiries =
+            sortExpiryTrades(current_month_nifty_expiries);
 
-  console.log("Using Base Strike:", spot);
+        current_month_nifty_expiries_truedata =
+            sortExpiryTrades(current_month_nifty_expiries_truedata);
+        console.log("current_month_nifty_expiries :: "+ JSON.stringify(current_month_nifty_expiries));
+          const holidayData = await safeExecute(
+            () => fetchWithRetry(API_URL),
+            "Holiday Reload"
+          );
 
-  current_month_nifty_expiries =
-      generateTrades(expiryObjects, spot - 300);
+          const holidaysFO = holidayData?.FO || [];
 
-  current_month_nifty_expiries_truedata =
-      generateTuesdayTrades(tuesdayObjects, spot - 300);
-  
-  // 🔵 sort immediately
-  current_month_nifty_expiries =
-      sortExpiries(current_month_nifty_expiries);
-
-  current_month_nifty_expiries_truedata =
-      sortExpiries(current_month_nifty_expiries_truedata);
-  console.log("current_month_nifty_expiries :: "+ JSON.stringify(current_month_nifty_expiries));
-	  const holidayData = await fetchWithRetry(API_URL);
-	const holidaysFO = holidayData.FO;
-
-	const adjustedExpiries = adjustExpiryAndRebuild(
-	  total_array_expiries,
-	  holidaysFO
-	);
-	  console.log("adjustedExpiries :: "+ JSON.stringify(adjustedExpiries));
-  total_array_expiries =
-      sortExpiries(adjustedExpiries);
-
-  total_array_expiries_truedata =
-      sortExpiries(total_array_expiries_truedata);
-
-  console.log("Option engine recalculated and sorted.");
-  console.log("Option engine recalculated successfully.");
-   console.log("total_array_expiries :: "+ JSON.stringify(total_array_expiries));
-    
+        const adjustedExpiries = adjustExpiryAndRebuild(
+          total_array_expiries,
+          holidaysFO
+        );
+          console.log("adjustedExpiries :: "+ JSON.stringify(adjustedExpiries));
+         if (isFirstKeyEmptyArray(adjustedExpiries)) {
+            total_array_expiries =
+                sortExpiryTrades(adjustedExpiries);
+         }
+          if (isFirstKeyEmptyArray(adjustedExpiries)) {
+            total_array_expiries_truedata =
+                sortExpiryTrades(total_array_expiries_truedata);
+          }
+        console.log("Option engine recalculated and sorted.");
+        console.log("Option engine recalculated successfully.");
+         console.log("total_array_expiries :: "+ JSON.stringify(total_array_expiries));
+     }, "initOptionEngine");
     
 }
+function isFirstKeyEmptyArray(obj) {
+  if (!obj || typeof obj !== "object") return true;
+
+  const keys = Object.keys(obj);
+
+  if (keys.length === 0) return true;
+
+  const firstKey = keys[0];
+  const value = obj[firstKey];
+
+  return Array.isArray(value) && value.length === 0;
+}
+
+function sortExpiryTrades(expiryMap) {
+  if (!expiryMap || typeof expiryMap !== "object") return {};
+
+  const sortedMap = {};
+
+  for (const expiryKey of Object.keys(expiryMap)) {
+    const trades = expiryMap[expiryKey];
+
+    if (!Array.isArray(trades)) {
+      sortedMap[expiryKey] = [];
+      continue;
+    }
+
+    sortedMap[expiryKey] = trades.sort((a, b) => {
+      try {
+        // Handle NIFTY-50 separately (keep at end)
+        if (a.symbol === "NIFTY-50") return 1;
+        if (b.symbol === "NIFTY-50") return -1;
+
+        // Extract strike price (last 5 digits before CE/PE)
+        const strikeA = extractStrike(a.symbol);
+        const strikeB = extractStrike(b.symbol);
+
+        // 1️⃣ Sort by strike (numeric)
+        if (strikeA !== strikeB) {
+          return strikeA - strikeB;
+        }
+
+        // 2️⃣ For same strike → CE first, then PE
+        if (a.symbol.endsWith("CE") && b.symbol.endsWith("PE")) return -1;
+        if (a.symbol.endsWith("PE") && b.symbol.endsWith("CE")) return 1;
+
+        return 0;
+      } catch (err) {
+        console.log("Sort error:", err.message);
+        return 0;
+      }
+    });
+  }
+
+  return sortedMap;
+}
+function extractStrike(symbol) {
+  if (!symbol) return 0;
+
+  // Matches last 5 digits before CE/PE
+  const match = symbol.match(/(\d{5})(CE|PE)$/);
+
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+
+  return 0; // fallback
+}
+
+
 function sortExpiries(arr) {
   if (!Array.isArray(arr)) return [];
   return arr.sort((a, b) => {
@@ -600,7 +730,33 @@ function sortExpiries(arr) {
     return expA.localeCompare(expB);
   });
 }
-await initOptionEngine();
+
+function waitForExpiryObjects(timeout = 10000, interval = 200) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+
+    const check = () => {
+      try {
+        if (Array.isArray(expiryObjects) && expiryObjects.length > 0) {
+          console.log("✅ expiryObjects is ready");
+          return resolve(true);
+        }
+
+        if (Date.now() - start > timeout) {
+          return reject(new Error("❌ Timeout waiting for expiryObjects"));
+        }
+
+        setTimeout(check, interval);
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    check();
+  });
+}
+
+
 
 /*
 current_month_nifty_expiries = generateTrades(expiryObjects,baseGlobalStrike);
@@ -732,97 +888,9 @@ const extractExpiryFromSymbolTrue = (symbol) => {
 };
 
 
-let expiryKeyMap = {};
-/*  OLD CODE 
-Object.entries(total_array_expiries).forEach(([fyersKey, fyersArr]) => {
-  if (!fyersArr?.length) return;
-
-  const fyersSymbol = fyersArr[0].symbol;
-  const fyersExpiry = extractExpiryFromSymbol(fyersSymbol ? fyersSymbol : "");
-
-  Object.entries(total_array_expiries_truedata).forEach(
-    ([trueKey, trueArr]) => {
-      if (!trueArr?.length) return;
-
-      const trueSymbol = trueArr[0].symbol;
-      const trueExpiry = extractExpiryFromSymbol(trueSymbol ? trueSymbol : "" );
-
-      if (fyersExpiry && trueExpiry) {
-        // Match by calendar logic: YYMMDD vs YYDdd
-        // Example: 25D02 ↔ 251202
-        if (trueExpiry.startsWith(fyersExpiry.replace("D", ""))) {
-          expiryKeyMap[fyersExpiry] = trueExpiry;
-        }
-      }
-    }
-  );
-});*/
-
-Object.entries(total_array_expiries).forEach(([fyersKey, fyersArr]) => {
-  if (!fyersArr?.length) return;
-
-  const fyersSymbol = fyersArr[1] [0];
-   console.log(" fyersSymbol[`symbol`] ", JSON.stringify(fyersSymbol["symbol"]));
-  const fyersExpiry = extractExpiryFromSymbol(fyersSymbol["symbol"] ? fyersSymbol["symbol"] : "");
-  console.log(" fyersExpiry ", JSON.stringify(fyersExpiry));
-
-  Object.entries(total_array_expiries_truedata).forEach(
-    ([trueKey, trueArr]) => {
-      if (!trueArr?.length) return;
-
-      const trueSymbol = trueArr[1] [0]; //.symbol;
-      const trueExpiry = extractExpiryFromSymbolTrue(trueSymbol["symbol"] ? trueSymbol["symbol"] : "" );
-       console.log(" trueExpiry ", JSON.stringify(trueExpiry));
-      if (fyersExpiry && trueExpiry) {
-        // Match by calendar logic: YYMMDD vs YYDdd
-        // Example: 25D02 ↔ 251202
-        if (trueExpiry.startsWith(fyersExpiry.replace("D", ""))) {
-          expiryKeyMap[fyersExpiry] = trueExpiry;
-        }
-      }
-    }
-  );
-});
-//console.log(" Using Regex fetched the keys from true_array_expiries and true_array_expiries_truedata  : symbol.match(/NIFTY(\d{2}D\d{2})/)  FYERS: NIFTY25D0225600CE → 25D02 and /NIFTY(\d{6})/ TrueData: NIFTY25120225600CE → 251202 ");
-console.log(" Using Regex fetched the keys from true_array_expiries and true_array_expiries_truedata  : symbol.match(/NIFTY(\d{5})/)  FYERS: NIFTY26J0625600CE → 26106  NIFTY25D0225600CE → 25D02 and /NIFTY(\d{6})/ TrueData: NIFTY25120225600CE → 251202 ");
-let expiryKeyMapRegex = Object.assign( {} , expiryKeyMap) ;
-console.log(" calculated expiry "+JSON.stringify(expiryKeyMap))
-console.log(" Using just key matching and endwith (fyersExpiry.slice(-2) no regex most safe approach ")
-
-Object.values(total_array_expiries).forEach((fyersArr) => {
-  if (!fyersArr?.length) return;
-
-  const fyersExpiry = fyersArr[0].expiry;
-
-  Object.values(total_array_expiries_truedata).forEach((trueArr) => {
-    if (!trueArr?.length) return;
-
-    const trueExpiry = trueArr[0].expiry;
-
-    // Match by calendar day (02 → 02, 09 → 09 etc.)
-    if (trueExpiry !==undefined && trueExpiry !== null && trueExpiry.endsWith(fyersExpiry.slice(-2))) {
-      expiryKeyMap[fyersExpiry] = trueExpiry;
-    }
-  });
-});
-console.log(" calculated expiry slice approach "+JSON.stringify(expiryKeyMap))
 
 
-for (const fyersKey in fyersStrikeMap) {
-  for (const trueKey in truedataStrikeMap) {
-    const fyersStrikes = fyersStrikeMap[fyersKey];
-    const trueStrikes = truedataStrikeMap[trueKey];
 
-    // Check intersection
-    const match = [...fyersStrikes].some(s => trueStrikes.has(s));
-
-    if (match) {
-      expiryKeyMap[fyersKey] = trueKey;
-      break;
-    }
-  }
-}
-console.log(" calculated expiry fyersStrikeMap /truedataStrikeMap  approach "+JSON.stringify(expiryKeyMap))
 
 async function runFNO() {
   try {
@@ -835,22 +903,7 @@ async function runFNO() {
     console.error("Error fetching data:", error);
   }
 }
-console.log(" INITIALISING  for FNO symbols available " );
-    (async () => { 
-      
-           await  runFNO();
-           let tx = "SENSEX 12 Mar";
-            console.log("Searching for ", tx, "  in", totalSymbols.length, "...");
-            const test =  await search("SENSEX 12 Mar" , totalSymbols);
-           console.log("Search test results:", test.length, "found in", test.time, "ms");
-           if(Array.isArray(test.results)){
-             test.results.forEach((sr) => { 
-                console.log("record --> ",  JSON.stringify(sr));
 
-             });
-           }
-
-    })();
  
     
 
@@ -887,12 +940,47 @@ function resolveSymbols(symbols, total_array_expiries) {
   return result;
 }
 
+async function prepareExpiryData() {
+  const holidayData = await fetchWithRetry(API_URL);
 
+  const holidaysFO = holidayData?.FO || [];
+
+  let tuesdays = getTuesdaysOfMonth(
+    currentYear,
+    currentMonthIndex,
+    currentMonthDay,
+    holidaysFO
+  );
+
+  tuesdays = tuesdays.concat(
+    caculateTuesdayOfNextMonth(isLastMonthofYear)
+  );
+
+  tuesdays = tuesdays.filter(Boolean);
+
+  console.log("All Tuesdays:", tuesdays.map(formatTuesday));
+
+  const current_month_expiries = tuesdays;
+
+  expiryObjects = current_month_expiries.map(d => ({
+    date: d,
+    shortKey: formatToYYMMDD(d)
+  }));
+
+  tuesdayObjects = current_month_expiries.map((d, indx) => ({
+    date: getShortYYMMDDDigits(d),
+    shortKey: indx
+  }));
+
+  console.log("Expiry objects prepared:", expiryObjects.length);
+
+  return true;
+}
 
 //let total_expiry_keyCombinator = [ total_array_expiries.]
 // Start HTTPS server8443
 // 8888 for the fyers.web.in/scalper_terminal 
-let port = 8443;
+//let port = 8443;
 
 // Create an HTTPS server
 /*let server  =    https.createServer(options, app).listen(port, () => {
@@ -902,640 +990,489 @@ let port = 8443;
 */
 
 // Create WebSocket server over HTTPS
-const wss = new WebSocketServer({ server });// new WebSocket.Server({ server });
- let  matching_contracts = [];
-wss.on("connection", (ws) => {
-  console.log("[WSS] New client connected.");
+//const wss = new WebSocketServer({ server });// new WebSocket.Server({ server });
 
-  // Each client has its own subscriptions
-  ws.subscribedSymbols = new Map();
-   // Each client has its own state
-  ws.matching_contracts = [];
-   ws.aslongSubscribedInterval = null; // to track interval
-   let initialtrade =[]; let idSym = []; 
-const DELAY_BETWEEN_TRADES_MS = 30; // 30 mili seconds delay between individual ws.send() calls
-const CYCLE_INTERVAL_MS = 9000;     // The original 17 seconds cycle
 
-  const symbols_const = [
-      /* { symbol: "NIFTY25093025300CE", id: "302418032",  },
-    {symbol: "NIFTY25093025100PE",  id: "302418025"  },
-    { symbol: "NIFTY25093025100CE",id: "302418024"   },
-    { symbol: "NIFTY25093025200PE", id: "302418029"  }*/
-     { symbol: "NIFTY25D1626000CE", id: "302418032",  },
-    {symbol: "NIFTY25D1626000PE",  id: "302418025"  },
-    { symbol: "NIFTY25D1626100CE",id: "302418024"   },
- 	{ symbol: "NIFTY25D1626100PE", id: "302418029"  } 
-  ];
-  // === 1. Send TrueData Real Time Data Service event immediately ===
-  const mockEvent0 = {
-    success: true,
-    message: "TrueData Real Time Data Service",
-    segments: ["EQ", "FO", "IND", ""],
-    maxsymbols: 50,
-    subscription: "tick",
-    validity: "2025-10-01T00:00:00"
-  };
-  ws.send(JSON.stringify(mockEvent0));
-  console.log("[WSS] Sent mockEvent0 (TrueData Service)");
-  /**
- * Recursively sends trades from the contracts array with a 3-second delay
- * between each individual send operation.
- * * @param {Array<Object>} contracts - The array of option contracts to send trades for.
- * @param {number} index - The current index in the contracts array.
- */
-function sendDelayedTrades(contracts, index = 0) {
-    // Base Case: Stop recursion when all contracts have been processed
-    if (index >= contracts.length) {
-        console.log(`[WSS] Finished sending all ${contracts.length} trades for the current cycle.`);
-        return;
-    }
 
-    const { id, symbol, k } = contracts[index];
-    
-    // 1. Send the current trade immediately
-    const trade = generateTrade(id, k);
-    // Ensure you check the readyState here if not checked in the setInterval wrapper
-    // if (ws.readyState === WebSocket.OPEN) { 
-        ws.send(JSON.stringify({ trade })); 
-        console.log(`[WSS] Sent trade for ${symbol} (Index ${index}):`, trade[2]);
-    // } else {
-    //    console.log(`[WSS] WebSocket not open, failed to send trade for ${symbol}`);
-    // }
+ 
 
-    
-    // 2. Schedule the sending of the next trade after the specified delay
-    setTimeout(() => {
-        sendDelayedTrades(contracts, index + 1);
-    }, DELAY_BETWEEN_TRADES_MS); 
+async function ensureOptionEngineReady() {
+  await initOptionEngine();
+
+  if (
+    !Array.isArray(total_array_expiries) ||
+    total_array_expiries.length === 0
+  ) {
+    console.log("❌ Option engine produced no trades");
+    return false;
+  }
+
+  console.log(
+    "✅ Trades generated:",
+    total_array_expiries.length
+  );
+
+  return true;
 }
-  // === 2. Keep sending heartbeat ===
-  const heartbeatInterval = setInterval(() => {
-    const mockEvent1 = {
-      success: true,
-      message: "HeartBeat",
-      timestamp: new Date().toISOString()
-    };
-    ws.send(JSON.stringify(mockEvent1));
-    console.log("[WSS] Sent HeartBeat");
-  }, 15000);
-    // Start interval only after subscription
-     
-    const aslongSubscribedInterval = setInterval(() => {
-    // if (ws.readyState !== WebSocket.OPEN) { 
-    //     console.log(`[WSS] WEBSOCKET NOT OPEN, skipping cycle.`); 
-    //     return; 
-    // } 
-
-    if (
-        Array.isArray(matching_contracts) &&
-        matching_contracts.length > 0
-    ) {
-        console.log(`\n--- Starting new trade cycle (Total contracts: ${matching_contracts.length}) ---`);
-        // Start the recursive, delayed sending process for this 17-second cycle
-        sendDelayedTrades(matching_contracts); 
-    } else {
-        console.log("[WSS] No contracts for client yet to send trades for.");
-    } 
-}, CYCLE_INTERVAL_MS);
 
 
 
 
-  // === 3. Handle client messages ===
-  ws.on("message", (msg) => {
-    try {
-      const request = JSON.parse(msg);
-      console.log("[WSS] Received:", request);
-     /* 
-     select 
-      trades_k_const.forEach(({ id, symbol, k }) => {
-      if (ws.subscribedSymbols.has(symbol)) {
-        const trade = generateTrade(id, k);
-        ws.send(JSON.stringify({ trade }));
-        console.log(`[WSS] Sent trade for ${symbol}:`, trade[2]);
-      }
-    });
-     */
-
-      if (request.method === "addsymbol" && Array.isArray(request.symbols)) {
 
 
-         // Reset interval if already running
-       // if (ws.aslongSubscribedInterval) {
-        //  clearInterval(ws.aslongSubscribedInterval);
-        //}
-        // --- FILTERING LOGIC ---
+async function bootstrap() {
+  console.log("🚀 Starting application bootstrap...");
 
-      // 1. Convert the array of required symbols into a Set for fast O(1) lookups.
-      const symbolSet = new Set(request.symbols);
-      console.log(`Searching for ${symbolSet.size} unique symbols...`);
+  // 1. Wait forever until holiday API works
+  await retryForever(
+    prepareExpiryData,
+    "Holiday + Expiry preparation"
+  );
 
-     // 2. Use flatMap to iterate through the nested structure and create a single flat array.
-       matching_contracts =  total_array_expiries.flatMap(expiryGroup => {  // total_array_expiries_truedata.flatMap(expiryGroup => {
-          // expiryGroup is in the format: ["expiryDate", [contract_objects...]] // consuming from self not truedata 
-          const optionsArray = expiryGroup[1];
-          
-          // Filter the optionsArray: keep only elements where the symbol is in our Set.
-          return optionsArray.filter(option => symbolSet.has(option.symbol));
+  // 2. Wait forever until option engine produces trades
+  await retryForever(
+    ensureOptionEngineReady,
+    "Option Engine Initialization"
+  );
+
+  console.log("🎯 Engine ready. Starting server...");
+  // 2a. Check and verify the Fyers expiries 
+   
+      let expiryKeyMap = {};
+
+
+      Object.entries(total_array_expiries).forEach(([fyersKey, fyersArr]) => {
+        if (!fyersArr?.length) return;
+
+        const fyersSymbol = fyersArr[1] [0];
+        console.log(" fyersSymbol[`symbol`] ", JSON.stringify(fyersSymbol["symbol"]));
+        const fyersExpiry = extractExpiryFromSymbol(fyersSymbol["symbol"] ? fyersSymbol["symbol"] : "");
+        console.log(" fyersExpiry ", JSON.stringify(fyersExpiry));
+
+        Object.entries(total_array_expiries_truedata).forEach(
+          ([trueKey, trueArr]) => {
+            if (!trueArr?.length) return;
+
+            const trueSymbol = trueArr[1] [0]; //.symbol;
+            const trueExpiry = extractExpiryFromSymbolTrue(trueSymbol["symbol"] ? trueSymbol["symbol"] : "" );
+            console.log(" trueExpiry ", JSON.stringify(trueExpiry));
+            if (fyersExpiry && trueExpiry) {
+              // Match by calendar logic: YYMMDD vs YYDdd
+              // Example: 25D02 ↔ 251202
+              if (trueExpiry.startsWith(fyersExpiry.replace("D", ""))) {
+                expiryKeyMap[fyersExpiry] = trueExpiry;
+              }
+            }
+          }
+        );
       });
-      
-      console.log("\n--- Matching Contracts Found ---");
-      console.log(`Total matches: ${matching_contracts.length}`);
-      console.log(JSON.stringify(matching_contracts, null, 2));
-       console.log("\n--- Matching Contracts Using new sym.startsWith 'NIFTY' in total_array_expiries ---");
-      const matchedTrades = resolveSymbols(symbolSet, total_array_expiries);
-      let mergeMatchedRecord  = [];
-      if(matching_contracts.length < matchedTrades.length){
-          mergeMatchedRecord = [...matching_contracts , matchedTrades];
+      //console.log(" Using Regex fetched the keys from true_array_expiries and true_array_expiries_truedata  : symbol.match(/NIFTY(\d{2}D\d{2})/)  FYERS: NIFTY25D0225600CE → 25D02 and /NIFTY(\d{6})/ TrueData: NIFTY25120225600CE → 251202 ");
+      console.log(" Using Regex fetched the keys from true_array_expiries and true_array_expiries_truedata  : symbol.match(/NIFTY(\d{5})/)  FYERS: NIFTY26J0625600CE → 26106  NIFTY25D0225600CE → 25D02 and /NIFTY(\d{6})/ TrueData: NIFTY25120225600CE → 251202 ");
+      let expiryKeyMapRegex = Object.assign( {} , expiryKeyMap) ;
+      console.log(" calculated expiry "+JSON.stringify(expiryKeyMap))
+      console.log(" Using just key matching and endwith (fyersExpiry.slice(-2) no regex most safe approach ")
 
-      }
-       console.log(`New matching contract after merge :  `);
-       
-      console.log(`Total matches: ${mergeMatchedRecord.length}`);
-      console.log(JSON.stringify(mergeMatchedRecord, null, 2));
-      const requestedSymbols = new Set(
-               request.symbols.filter(s => s.startsWith("NIFTY") && s.includes("CE") || s.includes("PE"))
-            )     ;
-      //Build a symbol → record index from total_array_expiries
-      const fyersSymbolIndex = {};
+      Object.values(total_array_expiries).forEach((fyersArr) => {
+        if (!fyersArr?.length) return;
 
-      Object.values(total_array_expiries).forEach(expiryArr => {
-        expiryArr.forEach(record => {
-          fyersSymbolIndex[record.symbol] = record;
-        });
-      });
-      const matchedFyersRecords = [];
+        const fyersExpiry = fyersArr[0].expiry;
 
-        requestedSymbols.forEach(symbol => {
-          if (fyersSymbolIndex[symbol]) {
-            matchedFyersRecords.push(fyersSymbolIndex[symbol]);
+        Object.values(total_array_expiries_truedata).forEach((trueArr) => {
+          if (!trueArr?.length) return;
+
+          const trueExpiry = trueArr[0].expiry;
+
+          // Match by calendar day (02 → 02, 09 → 09 etc.)
+          if (trueExpiry !==undefined && trueExpiry !== null && trueExpiry.endsWith(fyersExpiry.slice(-2))) {
+            expiryKeyMap[fyersExpiry] = trueExpiry;
           }
         });
-          console.log("\n--- Matching Contracts Using considering request symbol in  'NIFTY25D2325800PE' format : lookup in total_array_expiries ---");
-           let mergeMatchedRecordSimple  = [];
+      });
+      console.log(" calculated expiry slice approach "+JSON.stringify(expiryKeyMap))
 
-            console.log(`Original matching_contracts Total matches: ${matching_contracts.length}`);
-         if(matching_contracts.length < matchedFyersRecords.length){
-          mergeMatchedRecordSimple = [...matching_contracts , matchedFyersRecords];
 
-         }
-           console.log(`New matching contract after merge :  `);
-           console.log(`Total matches: ${mergeMatchedRecordSimple.length}`);
-           console.log(JSON.stringify(mergeMatchedRecordSimple, null, 2));
-      
-            if(mergeMatchedRecord.length < mergeMatchedRecordSimple.length){
-              if(matching_contracts.length < mergeMatchedRecordSimple.length){ 
-                     matching_contracts = mergeMatchedRecordSimple;
-              }
-              else { 
-                   matching_contracts = matching_contracts;
-              }
+      for (const fyersKey in fyersStrikeMap) {
+        for (const trueKey in truedataStrikeMap) {
+          const fyersStrikes = fyersStrikeMap[fyersKey];
+          const trueStrikes = truedataStrikeMap[trueKey];
 
-         } else { 
-                   if(matching_contracts.length < mergeMatchedRecord.length){ 
-                     matching_contracts = mergeMatchedRecord;
-              }
-              else { 
-                   matching_contracts = matching_contracts;
-              }
-             }
+          // Check intersection
+          const match = [...fyersStrikes].some(s => trueStrikes.has(s));
 
-        // searach symbols in the generated total_array_expiries_truedata
-       
-        matching_contracts.forEach(({ id, symbol, k }) => {
-           
-            const trade = generateTrade(id, k);
-            console.log(`[WSS] Initial trade for ${id}:`, JSON.stringify(trade));
-             idSym.push([id , symbol]);
-               initialtrade.push([symbol, ...trade]);
-           // ws.send(JSON.stringify({ trade }));
-           // console.log(`[WSS] Sent trade for ${symbol}:`, trade[2]);
-            ws.subscribedSymbols.set(id, symbol);
-        });
-         ws.matching_contracts = matching_contracts;
-         
-
-       // request.symbols.forEach(sym => {
-       /*     trades_k_const.forEach(({ id, symbol ,k }) => {
-
-               const trade = generateTrade(id, k);
-                 ws.send(JSON.stringify({ trade }));
-                 console.log(`[WSS] Initial trade for ${id}:`, JSON.stringify(trade));
-                 idSym.push([id , symbol]);
-
-                  //trade.push(symbol);
-                  initialtrade.push([symbol, ...trade]);
-                 ws.subscribedSymbols.set(id, symbol);
-             })
-             */
-        // } )
-        let syml =   Array.from(ws.subscribedSymbols.entries());
-         console.log(` Initial trades first array :`, JSON.stringify(initialtrade));
-        // Deduplicate using Set
-        // add the NIFTY-50 SPOT TRADE ---- 
-        let currentSpot =  baseGlobalStrike;
-         const nifty50SpotTrade  =  [
-          String(random9Digit()),
-            new Date().toISOString(),
-            (currentSpot + Math.random() * 1).toFixed(2),
-            "0","0","0",
-           (currentSpot + Math.random() * 2).toFixed(2),
-            (currentSpot + Math.random() * 3).toFixed(2),
-      (currentSpot + Math.random() * 1).toFixed(2),
-      (currentSpot + Math.random() * 1.5).toFixed(2),
-      Math.floor(1000000 + Math.random() * 9000000) + "",
-      Math.floor(1000000 + Math.random() * 9000000) + "",
-      "0","0","0","0","0"
-    ];
-        const  nifty50 = ["NIFTY-50" , ...nifty50SpotTrade ]; 
-      //      ["NIFTY-50","753989892","2025-12-16T10:12:41.627Z","141.23","0","0","0","108.92","111.05","163.63","143.79","7019403","8814904","0","0","0","0","0"]
-          initialtrade.push(nifty50);
-
-
-        const uniqueMerged = [...new Set(initialtrade)];
-          console.log(` Initial trades :`, JSON.stringify(uniqueMerged));
-         console.log("[WSS] Subscribed & matched contracts:", ws.matching_contracts.length);
-         // ✅ build custom symbollist
-       /* const symbollist1 = [];
-        const firstSymbol = symbols_const[0].symbol;
-        symbollist1.push(firstSymbol);                 // "NIFTY25093025300PE"
-        symbollist1.push([symbols_const[0].id]);       // ["302418032"]
-
-        // then push id + symbol pairs
-        symbols_const.slice(1).forEach(({ id, symbol }) => {
-        symbollist1.push([firstSymbol, id]);         // ["NIFTY25093025300PE", "302418025"]
-        });*/
-        // build symbollist as [symbol, id] pairs
-        const symbollist_pairs = Array.from(ws.subscribedSymbols.entries()).map(
-                ([symbol, id]) => [symbol, id]
-            );
-      
-    /* trades_k_const.forEach(({ id, symbol, k }) => {
-         if (ws.subscribedSymbols.has(symbol)) {
-         
-              syml[i].concat(initialtrade)
-      }});*/
-      
-        // Send mockEvent2 (symbols added)
-        const mockEvent2 = {
-          success: true,
-          message: "symbols added",
-          symbolsadded: request.symbols.length,
-          symbollist:initialtrade,
-          totalsymbolsubscribed: ws.subscribedSymbols.size
-        };
-        ws.send(JSON.stringify(mockEvent2));
-        console.log("[WSS] Sent mockEvent2 (symbols added):", JSON.stringify(syml));
-        // INVOLE the asLongSubscribedInterval
-        //aslongSubscribedInterval();
-        
-
- 
-     
-     
-     
-     
-     
-     
-      }
-    } catch (err) {
-      console.error("[WSS] Error parsing message:", err.message);
-      ws.send(JSON.stringify({ success: false, message: "Invalid JSON" }));
-    }
-  });
-
- 
-  const trades_k_const = [
-
-      /*  { id: "302418012", symbol: "NIFTY25O0724100CE", k: 180 },
-    { id: "302418013", symbol: "NIFTY25O0724100PE", k: 40 },
-    { id: "302418014", symbol: "NIFTY25O0724200PE", k: 360 },
-    { id: "302418015", symbol: "NIFTY25O0724200CE", k: 60 },
-
-    { id: "302418016", symbol: "NIFTY25O0724300CE", k: 180 },
-    { id: "302418017", symbol: "NIFTY25O0724300PE", k: 40 },
-    { id: "302418018", symbol: "NIFTY25O0724400PE", k: 360 },
-    { id: "302418019", symbol: "NIFTY25O0724400CE", k: 60 },
-
-     { id: "302418020", symbol: "NIFTY25O0724500CE", k: 180 },
-    { id: "302418021", symbol: "NIFTY25O0724500PE", k: 40 },
-    { id: "302418022", symbol: "NIFTY25O0724600PE", k: 360 },
-    { id: "302418023", symbol: "NIFTY25O0724600CE", k: 60 },
-
-    { id: "302418032", symbol: "NIFTY25O0724700CE", k: 180 },
-    { id: "302418025", symbol: "NIFTY25O0724700PE", k: 40 },
-    { id: "302418024", symbol: "NIFTY25O0724800PE", k: 360 },
-    { id: "302418029", symbol: "NIFTY25O0724800CE", k: 60 } */
-     { id: "302418011", symbol: "NIFTY-50", k: 2 },
-      { id: "302418012", symbol: "NIFTY25D1624100CE", k: 180 },
-    { id: "302518013", symbol: "NIFTY25D1625100PE", k: 40 },
-    { id: "302418014", symbol: "NIFTY25D1625200PE", k: 360 },
-    { id: "302418015", symbol: "NIFTY25D1625200CE", k: 60 },
-
-    { id: "302418016", symbol: "NIFTY25D1625300CE", k: 180 },
-    { id: "302418017", symbol: "NIFTY25D1625300PE", k: 40 },
-    { id: "302418018", symbol: "NIFTY25D1625400PE", k: 360 },
-    { id: "302418019", symbol: "NIFTY25D1625400CE", k: 60 },
-
-     { id: "302418020", symbol: "NIFTY25D1625500CE", k: 180 },
-    { id: "302418021", symbol: "NIFTY25D1625500PE", k: 40 },
-    { id: "302418022", symbol: "NIFTY25D1625600PE", k: 360 },
-    { id: "302518023", symbol: "NIFTY25D1625600CE", k: 60 },
-
-    { id: "302418032", symbol: "NIFTY25D1625700CE", k: 180 },
-    { id: "302418025", symbol: "NIFTY25D1625700PE", k: 40 },
-    { id: "302418024", symbol: "NIFTY25D1625800PE", k: 360 },
-    { id: "302418029", symbol: "NIFTY25D1625800CE", k: 60 },
-    	
-        { id: "302419032", symbol: "NIFTY25D1625900CE", k: 180 },
-    { id: "302419025", symbol: "NIFTY25D1625900PE", k: 40 },
-    { id: "302419024", symbol: "NIFTY25D1626000PE", k: 360 },
-    { id: "302419029", symbol: "NIFTY25D1626000CE", k: 60 },
-    			
-    	 { id: "302420032", symbol: "NIFTY25D1626050CE", k: 180 },
-    { id: "302420025", symbol: "NIFTY25D1626050PE", k: 40 },
-    { id: "302420024", symbol: "NIFTY25D1626100PE", k: 360 },
-     { id: "302420029", symbol: "NIFTY25D1626100CE", k: 60 },
-
-    { id: "302430001", symbol: "NIFTY25D2325400CE", k: 12 },
-  { id: "302430002", symbol: "NIFTY25D2325400PE", k: 18 },
-
-  { id: "302430003", symbol: "NIFTY25D2325500CE", k: 22 },
-  { id: "302430004", symbol: "NIFTY25D2325500PE", k: 28 },
-
-  { id: "302430005", symbol: "NIFTY25D2325600CE", k: 35 },
-  { id: "302430006", symbol: "NIFTY25D2325600PE", k: 42 },
-
-  { id: "302430007", symbol: "NIFTY25D2325700CE", k: 48 },
-  { id: "302430008", symbol: "NIFTY25D2325700PE", k: 52 },
-
-  { id: "302430009", symbol: "NIFTY25D2325800CE", k: 55 },
-  { id: "302430010", symbol: "NIFTY25D2325800PE", k: 58 },
-
-  { id: "302430011", symbol: "NIFTY25D2325900CE", k: 60 },
-  { id: "302430012", symbol: "NIFTY25D2325900PE", k: 63 },
-
-  { id: "302430013", symbol: "NIFTY25D2326000CE", k: 65 },
-  { id: "302430014", symbol: "NIFTY25D2326000PE", k: 68 },
-
-  { id: "302430015", symbol: "NIFTY25D2326100CE", k: 70 },
-  { id: "302430016", symbol: "NIFTY25D2326100PE", k: 72 },
-
-  { id: "302430017", symbol: "NIFTY25D2326200CE", k: 75 },
-  { id: "302430018", symbol: "NIFTY25D2326200PE", k: 78 },
-
-  { id: "302430019", symbol: "NIFTY25D2326300CE", k: 82 },
-  { id: "302430020", symbol: "NIFTY25D2326300PE", k: 85 },
-
-  { id: "302430021", symbol: "NIFTY25D2326400CE", k: 90 },
-  { id: "302430022", symbol: "NIFTY25D2326400PE", k: 95 },
-
-    { id: "302440001", symbol: "NIFTY25D3025400CE", k: 12 },
-  { id: "302440002", symbol: "NIFTY25D3025400PE", k: 18 },
-
-  { id: "302440003", symbol: "NIFTY25D3025500CE", k: 22 },
-  { id: "302440004", symbol: "NIFTY25D3025500PE", k: 28 },
-
-  { id: "302440005", symbol: "NIFTY25D3025600CE", k: 35 },
-  { id: "302440006", symbol: "NIFTY25D3025600PE", k: 42 },
-
-  { id: "302440007", symbol: "NIFTY25D3025700CE", k: 48 },
-  { id: "302440008", symbol: "NIFTY25D3025700PE", k: 52 },
-
-  { id: "302440009", symbol: "NIFTY25D3025800CE", k: 55 },
-  { id: "302440010", symbol: "NIFTY25D3025800PE", k: 58 },
-
-  { id: "302440011", symbol: "NIFTY25D3025900CE", k: 60 },
-  { id: "302440012", symbol: "NIFTY25D3025900PE", k: 63 },
-
-  { id: "302440013", symbol: "NIFTY25D3026000CE", k: 65 },
-  { id: "302440014", symbol: "NIFTY25D3026000PE", k: 68 },
-
-  { id: "302440015", symbol: "NIFTY25D3026100CE", k: 70 },
-  { id: "302440016", symbol: "NIFTY25D3026100PE", k: 72 },
-
-  { id: "302440017", symbol: "NIFTY25D3026200CE", k: 75 },
-  { id: "302440018", symbol: "NIFTY25D3026200PE", k: 78 },
-
-  { id: "302440019", symbol: "NIFTY25D3026300CE", k: 82 },
-  { id: "302440020", symbol: "NIFTY25D3026300PE", k: 85 },
-
-  { id: "302440021", symbol: "NIFTY25D3026400CE", k: 90 },
-  { id: "302440022", symbol: "NIFTY25D3026400PE", k: 95 },
-
-   { id: "302449999", symbol: "NIFTY26J0625400CE", k: 12 },
-  { id: "302450000", symbol: "NIFTY26J0625400PE", k: 18 },
-
-     { id: "302450001", symbol: "NIFTY26J0625500CE", k: 13 },
-  { id: "302450002", symbol: "NIFTY26J0625500PE", k: 23 },
-     { id: "302450003", symbol: "NIFTY26J0625600CE", k: 15 },
-  { id: "302450004", symbol: "NIFTY26J0625600PE", k: 21 },
-   { id: "302450005", symbol: "NIFTY26J0625700CE", k: 44 },
-  { id: "302450006", symbol: "NIFTY26J0625700PE", k: 11 },
-
-   { id: "302450007", symbol: "NIFTY26J0625800CE", k: 54 },
-  { id: "302450008", symbol: "NIFTY26J0625800PE", k: 62 },
-
-    { id: "302450009", symbol: "NIFTY26J0625900CE", k: 44 },
-  { id: "302450010", symbol: "NIFTY26J0625900PE", k: 11 },
-
-      { id: "302450011", symbol: "NIFTY26J0626000CE", k: 44 },
-  { id: "302450012", symbol: "NIFTY26J0626000PE", k: 11 },
-  { id: "302450013", symbol: "NIFTY26J0626100CE", k: 44 },
-  { id: "302450014", symbol: "NIFTY26J0626100PE", k: 11 },
-  { id: "302450015", symbol: "NIFTY26J0626200CE", k: 44 },
-  { id: "302450016", symbol: "NIFTY26J0626200PE", k: 11 },
-    { id: "302450017", symbol: "NIFTY26J0626300CE", k: 44 },
-  { id: "302450018", symbol: "NIFTY26J0626300PE", k: 11 },
-
-
-  { id: "302450021", symbol: "NIFTY26J0626400CE", k: 90 },
-  { id: "302450022", symbol: "NIFTY26J0626400PE", k: 95 },
- // 13 
- { id: "302459999", symbol: "NIFTY26J1325400CE", k: 12 },
-  { id: "302460000", symbol: "NIFTY26J1325400PE", k: 18 },
-
-    { id: "302460001", symbol: "NIFTY26J1325500CE", k: 13 },
-  { id: "302460002", symbol: "NIFTY26J1325500PE", k: 23 },
-     { id: "302460003", symbol: "NIFTY26J1325600CE", k: 15 },
-  { id: "302460004", symbol: "NIFTY26J1325600PE", k: 21 },
-   { id: "302460005", symbol: "NIFTY26J1325700CE", k: 44 },
-  { id: "302460006", symbol: "NIFTY26J1325700PE", k: 11 },
-
-   { id: "302460007", symbol: "NIFTY26J1325800CE", k: 54 },
-  { id: "302460008", symbol: "NIFTY26J1325800PE", k: 62 },
-
-    { id: "302460009", symbol: "NIFTY26J1325900CE", k: 44 },
-  { id: "302460010", symbol: "NIFTY26J1325900PE", k: 11 },
-
-      { id: "302460011", symbol: "NIFTY26J1326000CE", k: 44 },
-  { id: "302460012", symbol: "NIFTY26J1326000PE", k: 11 },
-  { id: "302460013", symbol: "NIFTY26J1326100CE", k: 44 },
-  { id: "302460014", symbol: "NIFTY26J1326100PE", k: 11 },
-  { id: "302460015", symbol: "NIFTY26J1326200CE", k: 44 },
-  { id: "302460016", symbol: "NIFTY26J1326200PE", k: 11 },
-    { id: "302460017", symbol: "NIFTY26J1326300CE", k: 44 },
-  { id: "302460018", symbol: "NIFTY26J1326300PE", k: 11 },
-
-
-  { id: "302460021", symbol: "NIFTY26J1326400CE", k: 90 },
-  { id: "302460022", symbol: "NIFTY26J1326400PE", k: 95 },
-//20
-    { id: "302469999", symbol: "NIFTY26J2025400CE", k: 12 },
-  { id: "302470000", symbol: "NIFTY26J2025400PE", k: 18 },
-//--
-{ id: "302470001", symbol: "NIFTY26J2025400CE", k: 12 },
-  { id: "302470002", symbol: "NIFTY26J2025400PE", k: 18 },
-
-    { id: "302470001", symbol: "NIFTY26J2025500CE", k: 13 },
-  { id: "302470002", symbol: "NIFTY26J2025500PE", k: 23 },
-     { id: "302470003", symbol: "NIFTY26J2025600CE", k: 15 },
-  { id: "302470004", symbol: "NIFTY26J2025600PE", k: 21 },
-   { id: "302470005", symbol: "NIFTY26J2025700CE", k: 44 },
-  { id: "302470006", symbol: "NIFTY26J2025700PE", k: 11 },
-
-   { id: "302470007", symbol: "NIFTY26J2025800CE", k: 54 },
-  { id: "302470008", symbol: "NIFTY26J2025800PE", k: 62 },
-
-    { id: "302470009", symbol: "NIFTY26J2025900CE", k: 44 },
-  { id: "302470010", symbol: "NIFTY26J2025900PE", k: 11 },
-
-      { id: "302470011", symbol: "NIFTY26J2026000CE", k: 44 },
-  { id: "302470012", symbol: "NIFTY26J2026000PE", k: 11 },
-  { id: "302470013", symbol: "NIFTY26J2026100CE", k: 44 },
-  { id: "302470014", symbol: "NIFTY26J2026100PE", k: 11 },
-  { id: "302470015", symbol: "NIFTY26J2026200CE", k: 44 },
-  { id: "302470016", symbol: "NIFTY26J2026200PE", k: 11 },
-    { id: "302470017", symbol: "NIFTY26J2026300CE", k: 44 },
-  { id: "302470018", symbol: "NIFTY26J2026300PE", k: 11 },
-//--
-  { id: "302470021", symbol: "NIFTY26J2026400CE", k: 90 },
-  { id: "302470022", symbol: "NIFTY26J2026400PE", k: 95 },
-
-  //30
-      { id: "302479999", symbol: "NIFTY26J2725400CE", k: 12 },
-  { id: "302480000", symbol: "NIFTY26J2725400PE", k: 18 },
-
-{ id: "302480001", symbol: "NIFTY26J2725400CE", k: 12 },
-  { id: "302480002", symbol: "NIFTY26J2725400PE", k: 18 },
-
-    { id: "302480001", symbol: "NIFTY26J2725500CE", k: 13 },
-  { id: "302480002", symbol: "NIFTY26J2725500PE", k: 23 },
-     { id: "302480003", symbol: "NIFTY26J2725600CE", k: 15 },
-  { id: "302480004", symbol: "NIFTY26J2725600PE", k: 21 },
-   { id: "302480005", symbol: "NIFTY26J2725700CE", k: 44 },
-  { id: "302480006", symbol: "NIFTY26J2725700PE", k: 11 },
-
-   { id: "302480007", symbol: "NIFTY26J2725800CE", k: 54 },
-  { id: "302480008", symbol: "NIFTY26J2725800PE", k: 62 },
-
-    { id: "302480009", symbol: "NIFTY26J2725900CE", k: 44 },
-  { id: "302480010", symbol: "NIFTY26J2725900PE", k: 11 },
-
-      { id: "302480011", symbol: "NIFTY26J2726000CE", k: 44 },
-  { id: "302480012", symbol: "NIFTY26J2726000PE", k: 11 },
-  { id: "302480013", symbol: "NIFTY26J2726100CE", k: 44 },
-  { id: "302480014", symbol: "NIFTY26J2726100PE", k: 11 },
-  { id: "302480015", symbol: "NIFTY26J2726200CE", k: 44 },
-  { id: "302480016", symbol: "NIFTY26J2726200PE", k: 11 },
-    { id: "302480017", symbol: "NIFTY26J2726300CE", k: 44 },
-  { id: "302480018", symbol: "NIFTY26J2726300PE", k: 11 },
-
-
-  { id: "302480021", symbol: "NIFTY26J2726400CE", k: 90 },
-  { id: "302480022", symbol: "NIFTY26J2726400PE", k: 95 },
-    
-  ];
- 
-
-
-  // === 5. Send trades every 2s for subscribed symbols ===
-  /*const tradeInterval = setInterval(() => {
-   console.log('generating  trades ')
-    matching_contracts.forEach(({ id, symbol, k }) => {
-      if (ws.subscribedSymbols.has(symbol)) {
-        const trade = generateTrade(id, k);
-        ws.send(JSON.stringify({ trade }));
-        console.log(`[WSS] Sent trade for ${symbol}:`, trade[2]);
-      }
-    });
-    if(Array.isArray(matching_contracts) && matching_contracts.length > 0 ){
-
-    }else {
-       console.log(' matching records to generate trades is not available  ')
-    }
-  }, 2000);
-   */
-     //5. Send trades every 2s for subscribed symbols ===
-      // 2. Trade generator for THIS client
-  const tradeInterval = setInterval(() => {
-    if (ws.readyState !== WebSocket.OPEN) return;
-
-    if (Array.isArray(ws.matching_contracts) && ws.matching_contracts.length > 0) {
-      ws.matching_contracts.forEach(({ id, symbol, k }) => {
-        if (ws.subscribedSymbols.has(symbol)) {
-          const trade = generateTrade(id, k);
-          ws.send(JSON.stringify({ trade }));
-          console.log(`[WSS] Sent trade for ${symbol}:`, trade[2]);
+          if (match) {
+            expiryKeyMap[fyersKey] = trueKey;
+            break;
+          }
         }
       }
-      );
-        // send the NIFTY-50 default trade 
-         /* const trade =   [
-              id,
-              new Date().toISOString(),
-              (k_const + Math.random() * 70).toFixed(2),
-              "0","0","0",
-              (k_const + Math.random() * 70).toFixed(2),
-              (k_const + Math.random() * 70).toFixed(2),
-              (k_const + Math.random() * 70).toFixed(2),
-              (k_const + Math.random() * 70).toFixed(2),
-              Math.floor(1000000 + Math.random() * 9000000) + "",
-              Math.floor(1000000 + Math.random() * 9000000) + "",
-              "0","0","0","0","0"
-          ]; */
-           let currentSpot =  baseGlobalStrike; 
-           // variable name must be trade else client sees nifty50SpotTrade
-         const trade  =  [
-                String(random9Digit()),
-                  new Date().toISOString(),
-                  (currentSpot + Math.random() * 1).toFixed(2),
-                  "0","0","0",
-                (currentSpot + Math.random() * 2).toFixed(2),
-                  (currentSpot + Math.random() * 3).toFixed(2),
-            (currentSpot + Math.random() * 1).toFixed(2),
-            (currentSpot + Math.random() * 1.5).toFixed(2),
-            Math.floor(1000000 + Math.random() * 9000000) + "",
-            Math.floor(1000000 + Math.random() * 9000000) + "",
-            "0","0","0","0","0"
-           ];
-          ws.send(JSON.stringify({ trade }));
-
-    } else {
-      console.log("[WSS] No matching records for this client");
-    }
-  }, 2000);
+      console.log(" calculated expiry fyersStrikeMap /truedataStrikeMap  approach "+JSON.stringify(expiryKeyMap))
 
 
 
 
 
 
-  // === 6. Cleanup on disconnect ===
-  ws.on("close", () => {
-    console.log("[WSS] Client disconnected.");
-    clearInterval(heartbeatInterval);
-    clearInterval(tradeInterval);
-    clearInterval(aslongSubscribedInterval);
-  });
-});
 
-// Use Render’s PORT (default to 3000 locally)
+
+
+  // 3. Load symbols
+  await runFNO();
+   console.log(" INITIALISING  for FNO symbols available " );
+    (async () => { 
+      
+           await  runFNO();
+           let tx = "SENSEX 12 Mar";
+            console.log("Searching for ", tx, "  in", totalSymbols.length, "...");
+            const test =  await search("SENSEX 12 Mar" , totalSymbols);
+           console.log("Search test results:", test.length, "found in", test.time, "ms");
+           if(Array.isArray(test.results)){
+             test.results.forEach((sr) => { 
+                console.log("record --> ",  JSON.stringify(sr));
+
+             });
+           }
+
+    })();
+  // 4. Start server ONLY now
+  startServer();
+}
+
+function startServer() {
+              //let total_expiry_keyCombinator = [ total_array_expiries.]
+              // Start HTTPS server8443
+              // 8888 for the fyers.web.in/scalper_terminal 
+              let port = 8443;
+
+              // Create an HTTPS server
+
+
+              let server  =    https.createServer(options, app).listen(port, () => {
+                      console.log(`HTTPS server running on port ${port}`);
+                      console.log(`✅ Mock WSS server running at wss://localhost:${port}`);
+                  });
+
+              // Create WebSocket server over HTTPS
+              const wss = new WebSocketServer({ server });// new WebSocket.Server({ server });
+              let  matching_contracts = [];
+              wss.on("connection", (ws) => {
+                console.log("[WSS] New client connected.");
+
+                // Each client has its own subscriptions
+                ws.subscribedSymbols = new Map();
+                // Each client has its own state
+                ws.matching_contracts = [];
+                ws.aslongSubscribedInterval = null; // to track interval
+                let initialtrade =[]; let idSym = []; 
+              const DELAY_BETWEEN_TRADES_MS = 30; // 30 mili seconds delay between individual ws.send() calls
+              const CYCLE_INTERVAL_MS = 9000;     // The original 17 seconds cycle
+
+                const symbols_const = [
+                    /* { symbol: "NIFTY25093025300CE", id: "302418032",  },
+                  {symbol: "NIFTY25093025100PE",  id: "302418025"  },
+                  { symbol: "NIFTY25093025100CE",id: "302418024"   },
+                  { symbol: "NIFTY25093025200PE", id: "302418029"  }*/
+                  { symbol: "NIFTY25D1626000CE", id: "302418032",  },
+                  {symbol: "NIFTY25D1626000PE",  id: "302418025"  },
+                  { symbol: "NIFTY25D1626100CE",id: "302418024"   },
+                { symbol: "NIFTY25D1626100PE", id: "302418029"  } 
+                ];
+                // === 1. Send TrueData Real Time Data Service event immediately ===
+                const mockEvent0 = {
+                  success: true,
+                  message: "TrueData Real Time Data Service",
+                  segments: ["EQ", "FO", "IND", ""],
+                  maxsymbols: 50,
+                  subscription: "tick",
+                  validity: "2025-10-01T00:00:00"
+                };
+                ws.send(JSON.stringify(mockEvent0));
+                console.log("[WSS] Sent mockEvent0 (TrueData Service)");
+                /**
+               * Recursively sends trades from the contracts array with a 3-second delay
+               * between each individual send operation.
+               * * @param {Array<Object>} contracts - The array of option contracts to send trades for.
+               * @param {number} index - The current index in the contracts array.
+               */
+              function sendDelayedTrades(contracts, index = 0) {
+                  // Base Case: Stop recursion when all contracts have been processed
+                  if (index >= contracts.length) {
+                      console.log(`[WSS] Finished sending all ${contracts.length} trades for the current cycle.`);
+                      return;
+                  }
+
+                  const { id, symbol, k } = contracts[index];
+                  
+                  // 1. Send the current trade immediately
+                  const trade = generateTrade(id, k);
+                  // Ensure you check the readyState here if not checked in the setInterval wrapper
+                  // if (ws.readyState === WebSocket.OPEN) { 
+                      ws.send(JSON.stringify({ trade })); 
+                      console.log(`[WSS] Sent trade for ${symbol} (Index ${index}):`, trade[2]);
+                  // } else {
+                  //    console.log(`[WSS] WebSocket not open, failed to send trade for ${symbol}`);
+                  // }
+
+                  
+                  // 2. Schedule the sending of the next trade after the specified delay
+                  setTimeout(() => {
+                      sendDelayedTrades(contracts, index + 1);
+                  }, DELAY_BETWEEN_TRADES_MS); 
+              }
+                // === 2. Keep sending heartbeat ===
+                const heartbeatInterval = setInterval(() => {
+                  const mockEvent1 = {
+                    success: true,
+                    message: "HeartBeat",
+                    timestamp: new Date().toISOString()
+                  };
+                  ws.send(JSON.stringify(mockEvent1));
+                  console.log("[WSS] Sent HeartBeat");
+                }, 15000);
+                  // Start interval only after subscription
+                  
+                  const aslongSubscribedInterval = setInterval(() => {
+                  // if (ws.readyState !== WebSocket.OPEN) { 
+                  //     console.log(`[WSS] WEBSOCKET NOT OPEN, skipping cycle.`); 
+                  //     return; 
+                  // } 
+
+                  if (
+                      Array.isArray(matching_contracts) &&
+                      matching_contracts.length > 0
+                  ) {
+                      console.log(`\n--- Starting new trade cycle (Total contracts: ${matching_contracts.length}) ---`);
+                      // Start the recursive, delayed sending process for this 17-second cycle
+                      sendDelayedTrades(matching_contracts); 
+                  } else {
+                      console.log("[WSS] No contracts for client yet to send trades for.");
+                  } 
+              }, CYCLE_INTERVAL_MS);
+
+
+
+
+                // === 3. Handle client messages ===
+                ws.on("message", (msg) => {
+                  try {
+                    const request = JSON.parse(msg);
+                    console.log("[WSS] Received:", request);
+                 
+                    if (request.method === "addsymbol" && Array.isArray(request.symbols)) {
+
+
+                      // Reset interval if already running
+                    // if (ws.aslongSubscribedInterval) {
+                      //  clearInterval(ws.aslongSubscribedInterval);
+                      //}
+                      // --- FILTERING LOGIC ---
+
+                    // 1. Convert the array of required symbols into a Set for fast O(1) lookups.
+                    const symbolSet = new Set(request.symbols);
+                    console.log(`Searching for ${symbolSet.size} unique symbols...`);
+
+                  // 2. Use flatMap to iterate through the nested structure and create a single flat array.
+                    matching_contracts =  total_array_expiries.flatMap(expiryGroup => {  // total_array_expiries_truedata.flatMap(expiryGroup => {
+                        // expiryGroup is in the format: ["expiryDate", [contract_objects...]] // consuming from self not truedata 
+                        const optionsArray = expiryGroup[1];
+                        
+                        // Filter the optionsArray: keep only elements where the symbol is in our Set.
+                        return optionsArray.filter(option => symbolSet.has(option.symbol));
+                    });
+                    
+                    console.log("\n--- Matching Contracts Found ---");
+                    console.log(`Total matches: ${matching_contracts.length}`);
+                    console.log(JSON.stringify(matching_contracts, null, 2));
+                    console.log("\n--- Matching Contracts Using new sym.startsWith 'NIFTY' in total_array_expiries ---");
+                    const matchedTrades = resolveSymbols(symbolSet, total_array_expiries);
+                    let mergeMatchedRecord  = [];
+                    if(matching_contracts.length < matchedTrades.length){
+                        mergeMatchedRecord = [...matching_contracts , matchedTrades];
+
+                    }
+                    console.log(`New matching contract after merge :  `);
+                    
+                    console.log(`Total matches: ${mergeMatchedRecord.length}`);
+                    console.log(JSON.stringify(mergeMatchedRecord, null, 2));
+                    const requestedSymbols = new Set(
+                            request.symbols.filter(s => s.startsWith("NIFTY") && s.includes("CE") || s.includes("PE"))
+                          )     ;
+                    //Build a symbol → record index from total_array_expiries
+                    const fyersSymbolIndex = {};
+
+                    Object.values(total_array_expiries).forEach(expiryArr => {
+                      expiryArr.forEach(record => {
+                        fyersSymbolIndex[record.symbol] = record;
+                      });
+                    });
+                    const matchedFyersRecords = [];
+
+                      requestedSymbols.forEach(symbol => {
+                        if (fyersSymbolIndex[symbol]) {
+                          matchedFyersRecords.push(fyersSymbolIndex[symbol]);
+                        }
+                      });
+                        console.log("\n--- Matching Contracts Using considering request symbol in  'NIFTY25D2325800PE' format : lookup in total_array_expiries ---");
+                        let mergeMatchedRecordSimple  = [];
+
+                          console.log(`Original matching_contracts Total matches: ${matching_contracts.length}`);
+                      if(matching_contracts.length < matchedFyersRecords.length){
+                        mergeMatchedRecordSimple = [...matching_contracts , matchedFyersRecords];
+
+                      }
+                        console.log(`New matching contract after merge :  `);
+                        console.log(`Total matches: ${mergeMatchedRecordSimple.length}`);
+                        console.log(JSON.stringify(mergeMatchedRecordSimple, null, 2));
+                    
+                          if(mergeMatchedRecord.length < mergeMatchedRecordSimple.length){
+                            if(matching_contracts.length < mergeMatchedRecordSimple.length){ 
+                                  matching_contracts = mergeMatchedRecordSimple;
+                            }
+                            else { 
+                                matching_contracts = matching_contracts;
+                            }
+
+                      } else { 
+                                if(matching_contracts.length < mergeMatchedRecord.length){ 
+                                  matching_contracts = mergeMatchedRecord;
+                            }
+                            else { 
+                                matching_contracts = matching_contracts;
+                            }
+                          }
+
+                      // searach symbols in the generated total_array_expiries_truedata
+                    
+                      matching_contracts.forEach(({ id, symbol, k }) => {
+                        
+                          const trade = generateTrade(id, k);
+                          console.log(`[WSS] Initial trade for ${id}:`, JSON.stringify(trade));
+                          idSym.push([id , symbol]);
+                            initialtrade.push([symbol, ...trade]);
+                        // ws.send(JSON.stringify({ trade }));
+                        // console.log(`[WSS] Sent trade for ${symbol}:`, trade[2]);
+                          ws.subscribedSymbols.set(id, symbol);
+                      });
+                      ws.matching_contracts = matching_contracts;
+                 
+                      let syml =   Array.from(ws.subscribedSymbols.entries());
+                      console.log(` Initial trades first array :`, JSON.stringify(initialtrade));
+                      // Deduplicate using Set
+                      // add the NIFTY-50 SPOT TRADE ---- 
+                      let currentSpot =  baseGlobalStrike;
+                      const nifty50SpotTrade  =  [
+                        String(random9Digit()),
+                          new Date().toISOString(),
+                          (currentSpot + Math.random() * 1).toFixed(2),
+                          "0","0","0",
+                        (currentSpot + Math.random() * 2).toFixed(2),
+                          (currentSpot + Math.random() * 3).toFixed(2),
+                    (currentSpot + Math.random() * 1).toFixed(2),
+                    (currentSpot + Math.random() * 1.5).toFixed(2),
+                    Math.floor(1000000 + Math.random() * 9000000) + "",
+                    Math.floor(1000000 + Math.random() * 9000000) + "",
+                    "0","0","0","0","0"
+                  ];
+                      const  nifty50 = ["NIFTY-50" , ...nifty50SpotTrade ]; 
+                    //      ["NIFTY-50","753989892","2025-12-16T10:12:41.627Z","141.23","0","0","0","108.92","111.05","163.63","143.79","7019403","8814904","0","0","0","0","0"]
+                        initialtrade.push(nifty50);
+
+
+                      const uniqueMerged = [...new Set(initialtrade)];
+                        console.log(` Initial trades :`, JSON.stringify(uniqueMerged));
+                      console.log("[WSS] Subscribed & matched contracts:", ws.matching_contracts.length);
+                  
+                      const symbollist_pairs = Array.from(ws.subscribedSymbols.entries()).map(
+                              ([symbol, id]) => [symbol, id]
+                          );
+                    
+                 
+                      // Send mockEvent2 (symbols added)
+                      const mockEvent2 = {
+                        success: true,
+                        message: "symbols added",
+                        symbolsadded: request.symbols.length,
+                        symbollist:initialtrade,
+                        totalsymbolsubscribed: ws.subscribedSymbols.size
+                      };
+                      ws.send(JSON.stringify(mockEvent2));
+                      console.log("[WSS] Sent mockEvent2 (symbols added):", JSON.stringify(syml));
+                      // INVOLE the asLongSubscribedInterval
+                      //aslongSubscribedInterval();
+                          
+                    }
+                  } catch (err) {
+                    console.error("[WSS] Error parsing message:", err.message);
+                    ws.send(JSON.stringify({ success: false, message: "Invalid JSON" }));
+                  }
+                });
+
+
+                  //5. Send trades every 2s for subscribed symbols ===
+                    // 2. Trade generator for THIS client
+                const tradeInterval = setInterval(() => {
+                  if (ws.readyState !== WebSocket.OPEN) return;
+
+                  if (Array.isArray(ws.matching_contracts) && ws.matching_contracts.length > 0) {
+                    ws.matching_contracts.forEach(({ id, symbol, k }) => {
+                      if (ws.subscribedSymbols.has(symbol)) {
+                        const trade = generateTrade(id, k);
+                        ws.send(JSON.stringify({ trade }));
+                        console.log(`[WSS] Sent trade for ${symbol}:`, trade[2]);
+                      }
+                    }
+                    );
+                      // send the NIFTY-50 default trade 
+      
+                        let currentSpot =  baseGlobalStrike; 
+                        // variable name must be trade else client sees nifty50SpotTrade
+                      const trade  =  [
+                              String(random9Digit()),
+                                new Date().toISOString(),
+                                (currentSpot + Math.random() * 1).toFixed(2),
+                                "0","0","0",
+                              (currentSpot + Math.random() * 2).toFixed(2),
+                                (currentSpot + Math.random() * 3).toFixed(2),
+                          (currentSpot + Math.random() * 1).toFixed(2),
+                          (currentSpot + Math.random() * 1.5).toFixed(2),
+                          Math.floor(1000000 + Math.random() * 9000000) + "",
+                          Math.floor(1000000 + Math.random() * 9000000) + "",
+                          "0","0","0","0","0"
+                        ];
+                        ws.send(JSON.stringify({ trade }));
+
+                  } else {
+                    console.log("[WSS] No matching records for this client");
+                  }
+                }, 2000);
+
+ 
+                // === 6. Cleanup on disconnect ===
+                ws.on("close", () => {
+                  console.log("[WSS] Client disconnected.");
+                  clearInterval(heartbeatInterval);
+                  clearInterval(tradeInterval);
+                  clearInterval(aslongSubscribedInterval);
+                });
+              });
+
+              // Use Render’s PORT (default to 3000 locally)
+              const PORT = process.env.PORT || 3000;
+              server.listen(PORT, "0.0.0.0", () => {
+                console.log(`🚀 Server running on port ${PORT}`);
+                console.log(`✅ WebSocket endpoint: wss://<your-app>.onrender.com`);
+              });
+
+
+}  /// startServer () 
+ 
+bootstrap();
+
+/*// Use Render’s PORT (default to 3000 locally)
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`✅ WebSocket endpoint: wss://<your-app>.onrender.com`);
-});
+});*/
 const expiries = [
   { code: "D16", label: "DEC16" },
   { code: "D23", label: "DEC23" },
