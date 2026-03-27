@@ -110,9 +110,10 @@ app.get("/recalculate-option-strikes", async (req, res) => {
     // 🚀 WAIT for full engine completion
     await initOptionEngine(token);
     // 🚀 Sort expiries after generation
-    total_array_expiries = sortExpiries(total_array_expiries);
+    total_array_expiries = sortExpiryTrades(total_array_expiries);
     const datNow = new Date().toISOString();
     console.log("Recalculation completed:", datNow);
+    console.log("Recaculated Total expiries:", JSON.stringify(total_array_expiries));
     console.log("Total expiries:", total_array_expiries.length);
     res.json(total_array_expiries); 
      /* 
