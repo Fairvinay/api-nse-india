@@ -1146,10 +1146,11 @@ function startServer() {
               // Create an HTTPS server
 
 
-              let server  =    https.createServer(options, app).listen(port, () => {
+              let server  =   http.createServer(app);
+               /*https.createServer(options, app).listen(port, () => {
                       console.log(`HTTPS server running on port ${port}`);
                       console.log(`✅ Mock WSS server running at wss://localhost:${port}`);
-                  });
+                  });*/
 
               // Create WebSocket server over HTTPS
               const wss = new WebSocketServer({ server });// new WebSocket.Server({ server });
