@@ -639,11 +639,11 @@ function generateTuesdayTrades(
           holidaysFO
         );
           console.log("adjustedExpiries :: "+ JSON.stringify(adjustedExpiries));
-         if (isFirstKeyEmptyArray(adjustedExpiries)) {
+         if (!isFirstKeyEmptyArray(adjustedExpiries)) {
             total_array_expiries =
                 sortExpiryTrades(adjustedExpiries);
          }
-          if (isFirstKeyEmptyArray(adjustedExpiries)) {
+          if (!isFirstKeyEmptyArray(adjustedExpiries)) {
             total_array_expiries_truedata =
                 sortExpiryTrades(total_array_expiries_truedata);
           }
