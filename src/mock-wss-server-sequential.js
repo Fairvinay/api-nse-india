@@ -667,6 +667,64 @@ function isFirstKeyEmptyArray(obj) {
   return Array.isArray(value) && value.length === 0;
 }
 
+/** sort AND uniques     **/ 
+	
+function sortExpiryTrades(expiryMap) {
+  if (!expiryMap || typeof expiryMap !== "object") return {};
+
+  const sortedMap = {};
+
+  for (const expiryKey of Object.keys(expiryMap)) {
+    const trades = expiryMap[expiryKey];
+
+    if (!Array.isArray(trades)) {
+      sortedMap[expiryKey] = [];
+      continue;
+    }
+
+    // ✅ STEP 1 — REMOVE DUPLICATES (by symbol)
+    const uniqueMap = new Map();
+
+    trades.forEach((trade) => {
+      if (trade?.symbol) {
+        uniqueMap.set(trade.symbol, trade); // overwrite duplicates
+      }
+    });
+
+    const uniqueTrades = Array.from(uniqueMap.values());
+
+    // ✅ STEP 2 — SORT
+    uniqueTrades.sort((a, b) => {
+      try {
+        if (a.symbol === "NIFTY-50") return 1;
+        if (b.symbol === "NIFTY-50") return -1;
+
+        const strikeA = extractStrike(a.symbol);
+        const strikeB = extractStrike(b.symbol);
+
+        // 1️⃣ Sort by strike
+        if (strikeA !== strikeB) {
+          return strikeA - strikeB;
+        }
+
+        // 2️⃣ CE before PE
+        if (a.symbol.endsWith("CE") && b.symbol.endsWith("PE")) return -1;
+        if (a.symbol.endsWith("PE") && b.symbol.endsWith("CE")) return 1;
+
+        return 0;
+      } catch (err) {
+        console.log("Sort error:", err.message);
+        return 0;
+      }
+    });
+
+    sortedMap[expiryKey] = uniqueTrades;
+  }
+
+  return sortedMap;
+}
+	
+/*
 function sortExpiryTrades(expiryMap) {
   if (!expiryMap || typeof expiryMap !== "object") return {};
 
@@ -708,7 +766,7 @@ function sortExpiryTrades(expiryMap) {
   }
 
   return sortedMap;
-}
+} */ 
 function extractStrike(symbol) {
   if (!symbol) return 0;
 
@@ -1279,18 +1337,37 @@ function startServer() {
                         
                         // Filter the optionsArray: keep only elements where the symbol is in our Set.
                         return optionsArray.filter(option => symbolSet.has(option.symbol));
-                    });
-                    
-                    console.log("\n--- Matching Contracts Found ---");
-                    console.log(`Total matches: ${matching_contracts.length}`);
-                    console.log(JSON.stringify(matching_contracts, null, 2));
-                    console.log("\n--- Matching Contracts Using new sym.startsWith 'NIFTY' in total_array_expiries ---");
-                    const matchedTrades = resolveSymbols(symbolSet, total_array_expiries);
-                    let mergeMatchedRecord  = [];
-                    if(matching_contracts.length < matchedTrades.length){
-                        mergeMatchedRecord = [...matching_contracts , matchedTrades];
-
-                    }
+                      });
+                      console.log("\n--- Matching Contracts Found ---");
+                      console.log(`Total matches: ${matching_contracts.length}`);
+                       console.log(JSON.stringify(matching_contracts, null, 2));
+                       console.log("\n--- Matching Contracts Using new sym.startsWith 'NIFTY' in total_array_expiries ---");
+                       const matchedTrades = resolveSymbols(symbolSet, total_array_expiries);
+                       let mergeMatchedRecord  = [];
+                      //first check if the client was unable to calculate the expiries so set a empty symbolSet
+                      if(symbolSet.size ==0 &&  Array.isArray(matchedTrades) && matchedTrades.length ==0){
+                           matching_contracts =  total_array_expiries.flatMap(expiryGroup => {  // total_array_expiries_truedata.flatMap(expiryGroup => {
+                             // expiryGroup is in the format: ["expiryDate", [contract_objects...]] // consuming from self not truedata 
+                              const optionsArray = expiryGroup[1];
+                               // Filter the optionsArray: keep only elements where the symbol is in our Set.
+                                return optionsArray; ///  no need to .filter(option => symbolSet.has(option.symbol));
+                          });
+                          // now matching_contracts contains all the generated total_array_expiries 
+                          // bellow also the mergeMatchedRecord and  mergeMatchedRecordSimple will be empty 
+                          //so  Initial trades first array below will send all the CE / PE generated at the server end 
+                          // it won't sent empty trades if there is no  addSymbol  proper symbols passed from client 
+                          // so the issue of client not able pass the symbols is resolved. 
+                          // also C:\n\position-book-local\components\listing\positionGrid\optionchain\OptionChainExpirySymbols.js
+                          // need not be manually updated with the HARD CODED OPTION array 
+                          // only once the client side connect server is clicked the 
+                          // makeWebSocketChange function on selection of expiry the generateSymbolsForExpiry may suceed not does not matter
+                          // sendSubscriptionRequest  will be met will proper generatedTrades CE /PE base on SPOT 
+                          // just comment the  if (Array.isArray(newSymbols) && newSymbols.length >0 ) {  in makeWebSocketChange
+                          // if needed 
+                      }
+                      if(matching_contracts.length < matchedTrades.length){
+                          mergeMatchedRecord = [...matching_contracts , matchedTrades];
+                       }
                     console.log(`New matching contract after merge :  `);
                     
                     console.log(`Total matches: ${mergeMatchedRecord.length}`);
