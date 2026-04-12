@@ -7,7 +7,7 @@
   "repository": "https://github.com/hi-imcodeman/stock-nse-india.git",
   "author": "Asraf Ali <asraf.cse@gmail.com>",
   "license": "MIT",
-  "type":"module",
+  
   "bin": {
     "nseindia": "build/cli/index.js"
   },
