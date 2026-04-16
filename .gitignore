@@ -108,7 +108,9 @@ build/
 
 # MacOS store file
 .DS_Store
-
+screens/id_rsaOct27
+screens/id_rsaOct27.pub
+screens/ssh.txt
 screens/
 examples
 docs
