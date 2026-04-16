@@ -2,8 +2,8 @@
 
 import fetch from "node-fetch";
 import { fetchNiftySpotExt } from "./nifty-fetch.js";
-const NSE_URL = "https://artilleryfeed2.onrender.com/";
-const NSE_URL2 = "https://scraper-api-eyiz.onrender.com/";
+const NSE_URL =  "https://feedsmain.onrender.com/";             //"https://artilleryfeed2.onrender.com/";
+const NSE_URL2 ="https://api-nse-india-vbmd.onrender.com/";     // "https://scraper-api-eyiz.onrender.com/";
 const FYERS_URL = "https://fyersfeed.onrender.com/stream";
 
 const FYERS_SYMBOL = "NSE:NIFTY50-INDEX";
