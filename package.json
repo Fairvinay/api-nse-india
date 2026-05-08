@@ -71,6 +71,7 @@
     "apollo-server-express": "^3.10.0",
     "asciichart": "^1.5.25",
     "axios": "^1.4.0",
+    "axios-cookiejar-support": "^7.0.0",
     "chalk": "^4.1.2",
     "cheerio": "1.0.0-rc.10",
     "cors": "^2.8.5",
@@ -82,6 +83,7 @@
     "ora": "^5.4.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^4.6.3",
+    "tough-cookie": "^6.0.1",
     "user-agents": "^1.0.104",
     "yargs": "^17.7.2",
      "node-fetch": "^3.3.2"

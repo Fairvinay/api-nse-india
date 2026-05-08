@@ -1,4 +1,6 @@
 import axios from 'axios'
+import { wrapper } from "axios-cookiejar-support";
+import { CookieJar } from "tough-cookie";
 import UserAgent from 'user-agents'
 import { getDateRangeChunks, sleep } from './utils'
 import {
@@ -229,6 +231,22 @@ export class NseIndia {
                   }     
                   else { 
                     console.log('NSE did not sent cookies for any of the 5 '+ this.fiveOther.join(","));
+                    const jar = new CookieJar();
+                    const client = wrapper(axios.create({
+                          jar,
+                          withCredentials: true,
+                          headers: {
+                            "User-Agent": "Mozilla/5.0",
+                            "Referer": "https://www.nseindia.com/",
+                          }
+                        }));
+                    await client.get("https://www.nseindia.com");
+                    const res = await client.get(
+                        url
+                    );
+
+                       return res.data   
+
                   }
                
             } catch (error) {
